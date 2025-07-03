@@ -1,0 +1,133 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id            String     @id @default(cuid())
+  name          String
+  phone         String?     @unique
+  email         String      @unique
+  password      String
+  college       String
+  branch        String
+  year          String
+  role          Role       @default(USER)
+  isVerified    Boolean    @default(false)
+  createdAt     DateTime   @default(now())
+  updatedAt     DateTime   @updatedAt
+
+  // Relations
+  products      Product[]  @relation("UserProducts")
+  requestsMade  Request[]  @relation("BuyerRequests")
+  requestsGot   Request[]  @relation("SellerRequests")
+  messages      Message[]  @relation("MessagesToUser")
+}
+
+model Product {
+  id          String     @id @default(cuid())
+  title       String
+  description String
+  price       Float
+  type        ProductType
+  category    String
+  imageUrl    String?    // Optional if using cloud image hosting
+  status      ProductStatus @default(AVAILABLE)
+  createdAt   DateTime   @default(now())
+
+  // Relations
+  owner       User       @relation("UserProducts", fields: [ownerId], references: [id])
+  ownerId     String
+  requests    Request[]
+}
+
+model Request {
+  id          String       @id @default(cuid())
+  message     String?
+  status      RequestStatus @default(PENDING)
+  platformFee Float
+  totalAmount Float
+  createdAt   DateTime     @default(now())
+
+  // Relations
+  product     Product      @relation(fields: [productId], references: [id])
+  productId   String
+
+  buyer       User         @relation("BuyerRequests", fields: [buyerId], references: [id])
+  buyerId     String
+
+  seller      User         @relation("SellerRequests", fields: [sellerId], references: [id])
+  sellerId    String
+
+  transaction Transaction?
+}
+
+model Transaction {
+  id            String     @id @default(cuid())
+  paymentStatus PaymentStatus @default(PENDING)
+  paymentMethod PaymentMethod
+  isDelivered   Boolean    @default(false)
+  deliveredAt   DateTime?
+  createdAt     DateTime   @default(now())
+
+  // Relation
+  request       Request    @relation(fields: [requestId], references: [id])
+  requestId     String @unique
+}
+
+model OTP {
+  id        String   @id @default(cuid())
+  email     String
+  code      String
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+}
+
+
+model Message {
+  id        String     @id @default(cuid())
+  toUser    User       @relation("MessagesToUser", fields: [toUserId], references: [id])
+  toUserId  String
+  from      String     // "system", "admin", etc.
+  content   String
+  createdAt DateTime   @default(now())
+}
+
+enum Role {
+  USER
+  ADMIN
+}
+
+enum ProductType {
+  SELL
+  RENT
+}
+
+enum ProductStatus {
+  AVAILABLE
+  RESERVED
+  SOLD
+}
+
+enum RequestStatus {
+  PENDING
+  ACCEPTED
+  REJECTED
+  CANCELLED
+  COMPLETED
+}
+
+enum PaymentStatus {
+  PENDING
+  PAID
+  FAILED
+}
+
+enum PaymentMethod {
+  CASH
+  ONLINE
+}
