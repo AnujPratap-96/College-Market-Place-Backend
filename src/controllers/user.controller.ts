@@ -56,8 +56,8 @@ export const emailsignup = async (req: Request, res: Response): Promise<void> =>
 
     res.cookie('signupToken', token, {
       httpOnly: true,
-      sameSite: 'none',
-      secure: process.env.NODE_ENV === 'production',
+
+      secure: false,
       maxAge: 15 * 60 * 1000,
     });
 
@@ -151,7 +151,7 @@ export const completeSignup = async (req: Request, res: Response): Promise<void>
 export const login = async (req: Request, res: Response): Promise<void> => {
 
   try {
-    
+
     const { email, password } = req.body;
 
     if (!email || !password) {
@@ -179,7 +179,7 @@ export const login = async (req: Request, res: Response): Promise<void> => {
 
     res.cookie('authToken', token, {
       httpOnly: true,
-      sameSite: 'none',
+
       secure: process.env.NODE_ENV === 'production',
       maxAge: 8 * 60 * 60 * 1000, // 8 hour
     });
@@ -188,14 +188,14 @@ export const login = async (req: Request, res: Response): Promise<void> => {
   } catch (error) {
     console.error("Login error:", error);
     res.status(500).json({ error: "Something went wrong." });
-    
+
   }
 
 }
 
 
-export const getProfile = async (req : Request, res: Response): Promise<void> => {
-  try{  
+export const getProfile = async (req: Request, res: Response): Promise<void> => {
+  try {
     const userId = req.userId;
     if (!userId) {
       res.status(401).json({ error: "Unauthorized access." });
@@ -220,8 +220,24 @@ export const getProfile = async (req : Request, res: Response): Promise<void> =>
     }
     res.status(200).json(user);
   }
-  catch(error) {
+  catch (error) {
     console.error("Get profile error:", error);
     res.status(500).json({ error: "Something went wrong." });
   }
 }
+
+export const logout = async (req: Request, res: Response): Promise<void> => {
+  try {
+    res.clearCookie('authToken', {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === 'production',
+    });
+    res.status(200).json({ message: "Logout successful." });
+  }
+  catch (error) {
+    res.status(500).json({
+      error: "Something went wrong!!"
+    })
+  }
+}
+

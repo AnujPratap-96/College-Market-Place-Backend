@@ -10,12 +10,13 @@ datasource db {
 model User {
   id            String     @id @default(cuid())
   name          String
-  phone         String?     @unique
+  phone         String    @unique
   email         String      @unique
   password      String
   college       String
   branch        String
   year          String
+  profileImage  String?    // Optional if using cloud image hosting
   role          Role       @default(USER)
   isVerified    Boolean    @default(false)
   createdAt     DateTime   @default(now())
