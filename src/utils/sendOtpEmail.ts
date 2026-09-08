@@ -1,7 +1,5 @@
 // src/utils/sendOtpEmail.ts
-// Use CommonJS-style require with type annotation
-
-const SibApiV3Sdk = require('sib-api-v3-sdk') as typeof import('sib-api-v3-sdk');
+import SibApiV3Sdk from 'sib-api-v3-sdk';
 
 export const sendOtpEmail = async (toEmail: string, otp: string) => {
   try {

@@ -3,81 +3,71 @@ generator client {
 }
 
 datasource db {
-  provider = "postgresql"
-  url      = env("DATABASE_URL")
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
 }
 
 model User {
-  id            String     @id @default(cuid())
-  name          String
-  phone         String    @unique
-  email         String      @unique
-  password      String
-  college       String
-  branch        String
-  year          String
-  profileImage  String?    // Optional if using cloud image hosting
-  role          Role       @default(USER)
-  isVerified    Boolean    @default(false)
-  createdAt     DateTime   @default(now())
-  updatedAt     DateTime   @updatedAt
-
-  // Relations
-  products      Product[]  @relation("UserProducts")
-  requestsMade  Request[]  @relation("BuyerRequests")
-  requestsGot   Request[]  @relation("SellerRequests")
-  messages      Message[]  @relation("MessagesToUser")
+  id           String    @id @default(cuid())
+  name         String
+  phone        String    @unique
+  email        String    @unique
+  college      String
+  branch       String
+  year         String
+  role         Role      @default(USER)
+  isVerified   Boolean   @default(false)
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+  password     String
+  profileImage String?
+  messages     Message[] @relation("MessagesToUser")
+  products     Product[] @relation("UserProducts")
+  requestsMade Request[] @relation("BuyerRequests")
+  requestsGot  Request[] @relation("SellerRequests")
 }
 
 model Product {
-  id          String     @id @default(cuid())
+  id          String        @id @default(cuid())
   title       String
   description String
   price       Float
   type        ProductType
   category    String
-  imageUrl    String?    // Optional if using cloud image hosting
+  imageUrl    String?
   status      ProductStatus @default(AVAILABLE)
-  createdAt   DateTime   @default(now())
-
-  // Relations
-  owner       User       @relation("UserProducts", fields: [ownerId], references: [id])
+  createdAt   DateTime      @default(now())
   ownerId     String
+  owner       User          @relation("UserProducts", fields: [ownerId], references: [id])
   requests    Request[]
 }
 
 model Request {
-  id          String       @id @default(cuid())
+  id          String        @id @default(cuid())
   message     String?
   status      RequestStatus @default(PENDING)
   platformFee Float
   totalAmount Float
-  createdAt   DateTime     @default(now())
-
-  // Relations
-  product     Product      @relation(fields: [productId], references: [id])
+  createdAt   DateTime      @default(now())
   productId   String
-
-  buyer       User         @relation("BuyerRequests", fields: [buyerId], references: [id])
   buyerId     String
-
-  seller      User         @relation("SellerRequests", fields: [sellerId], references: [id])
   sellerId    String
-
+  buyer       User          @relation("BuyerRequests", fields: [buyerId], references: [id])
+  product     Product       @relation(fields: [productId], references: [id])
+  seller      User          @relation("SellerRequests", fields: [sellerId], references: [id])
   transaction Transaction?
 }
 
 model Transaction {
-  id            String     @id @default(cuid())
+  id            String        @id @default(cuid())
   paymentStatus PaymentStatus @default(PENDING)
   paymentMethod PaymentMethod
-  isDelivered   Boolean    @default(false)
+  isDelivered   Boolean       @default(false)
   deliveredAt   DateTime?
-  createdAt     DateTime   @default(now())
-
-  // Relation
-  request       Request    @relation(fields: [requestId], references: [id])
-  requestId     String @unique
+  createdAt     DateTime      @default(now())
+  requestId     String        @unique
+  request       Request       @relation(fields: [requestId], references: [id])
 }
 
 model OTP {
@@ -88,14 +78,14 @@ model OTP {
   createdAt DateTime @default(now())
 }
 
-
 model Message {
-  id        String     @id @default(cuid())
-  toUser    User       @relation("MessagesToUser", fields: [toUserId], references: [id])
+  id        String   @id @default(cuid())
   toUserId  String
-  from      String     // "system", "admin", etc.
+  from      String
   content   String
-  createdAt DateTime   @default(now())
+  isRead    Boolean  @default(false)
+  createdAt DateTime @default(now())
+  toUser    User     @relation("MessagesToUser", fields: [toUserId], references: [id])
 }
 
 enum Role {
