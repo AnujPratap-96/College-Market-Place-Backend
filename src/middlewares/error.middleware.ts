@@ -1,39 +1,66 @@
 import { Request, Response, NextFunction } from 'express';
-import { AppError } from '../utils/AppError';
+import { ZodError } from 'zod';
+import { Prisma } from '@prisma/client';
+import { ApiError, mapZodErrors } from '../utils/api-error';
 import { errorResponse } from '../utils/response';
 
 export default function errorMiddleware(
-  err: Error | AppError,
+  err: any,
   req: Request,
   res: Response,
   next: NextFunction
-) {
+): void {
   if (!err) {
-    return next();
+    next();
+    return;
   }
 
-  let error = err;
+  let error: ApiError;
 
-  
-  if (!(err instanceof AppError)) {
-    error = new AppError(500, 'Internal Server Error');
+  if (err instanceof ZodError) {
+    const mappedError = mapZodErrors(err);
+    error = new ApiError(400, 'Validation failed', mappedError);
+  } else if (err instanceof ApiError) {
+    error = err;
+  } else if (err instanceof Prisma.PrismaClientInitializationError) {
+    error = new ApiError(503, 'Database service is currently unavailable. Please try again shortly.');
+  } else if (err instanceof Prisma.PrismaClientKnownRequestError) {
+    if (err.code === 'P2002') {
+      const target = err.meta?.target;
+      const field = Array.isArray(target) ? target.join(', ') : typeof target === 'string' ? target : 'field';
+      error = new ApiError(409, `A record with this ${field} already exists.`);
+    } else if (err.code === 'P2025') {
+      error = new ApiError(404, 'The requested record was not found.');
+    } else if (['P1000', 'P1001', 'P1002', 'P1008', 'P1017'].includes(err.code)) {
+      error = new ApiError(503, 'Database connection could not be established. Please try again shortly.');
+    } else {
+      error = new ApiError(400, 'Database request could not be processed.');
+    }
+  } else if (err instanceof Prisma.PrismaClientValidationError) {
+    error = new ApiError(400, 'Invalid request data format.');
+  } else if (
+    err instanceof Prisma.PrismaClientRustPanicError ||
+    err instanceof Prisma.PrismaClientUnknownRequestError
+  ) {
+    error = new ApiError(500, 'An internal database error occurred.');
+  } else {
+    const statusCode = typeof err.statusCode === 'number' && err.statusCode >= 400 && err.statusCode < 600
+      ? err.statusCode
+      : 500;
+    const message = statusCode < 500 && err.message
+      ? err.message
+      : 'An unexpected server error occurred. Please try again later.';
+    error = new ApiError(statusCode, message, null);
   }
 
-  const statusCode = (error as AppError).statusCode || 500;
-  const message = error.message || 'Internal Server Error';
+  console.error(`[${req.id || 'REQ'}] ${req.method} ${req.originalUrl} - ${error.statusCode}: ${err.message || error.message}`);
+  if (err.stack) {
+    console.error(err.stack);
+  }
 
-  console.error('Error:', {
-    path: req.originalUrl,
-    method: req.method,
-    statusCode,
-    message,
-    stack: process.env.NODE_ENV !== 'production' ? err.stack : undefined,
-  });
-
-  const stackTrace = process.env.NODE_ENV !== 'production' ? err.stack : undefined;
-
-  return errorResponse(res, {
-    statusCode,
-    message,
+  errorResponse(res, {
+    statusCode: error.statusCode,
+    message: error.message,
+    error: error.details ?? null,
   });
 }

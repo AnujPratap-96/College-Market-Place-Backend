@@ -9,38 +9,62 @@ datasource db {
 }
 
 model User {
-  id           String    @id @default(cuid())
-  name         String
-  phone        String    @unique
-  email        String    @unique
-  college      String
-  branch       String
-  year         String
-  role         Role      @default(USER)
-  isVerified   Boolean   @default(false)
-  createdAt    DateTime  @default(now())
-  updatedAt    DateTime  @updatedAt
-  password     String
-  profileImage String?
-  messages     Message[] @relation("MessagesToUser")
-  products     Product[] @relation("UserProducts")
-  requestsMade Request[] @relation("BuyerRequests")
-  requestsGot  Request[] @relation("SellerRequests")
+  id               String          @id @default(cuid())
+  name             String
+  phone            String          @unique
+  email            String          @unique
+  college          String
+  branch           String
+  year             String
+  role             Role            @default(USER)
+  isVerified       Boolean         @default(false)
+  createdAt        DateTime        @default(now())
+  updatedAt        DateTime        @updatedAt
+  password         String
+  profileImage     String?
+  messages         Message[]       @relation("MessagesToUser")
+  products         Product[]       @relation("UserProducts")
+  requestsMade     Request[]       @relation("BuyerRequests")
+  requestsGot      Request[]       @relation("SellerRequests")
+  ordersBought     Order[]         @relation("BuyerOrders")
+  ordersSold       Order[]         @relation("SellerOrders")
+  reportsSubmitted ProductReport[] @relation("UserReports")
+  subscriptionsSubscribed Subscription[] @relation("UserSubscriptions")
+  subscriptionsProvided   Subscription[] @relation("ProviderSubscriptions")
+  wallet           Wallet?
+  auctionsSold     Auction[]       @relation("SellerAuctions")
+  auctionsWinning  Auction[]       @relation("CurrentBidderAuctions")
+  bids             Bid[]           @relation("UserBids")
+  reviewsGiven     Review[]        @relation("ReviewsGiven")
+  reviewsReceived  Review[]        @relation("ReviewsReceived")
+  wantedRequests   WantedRequest[] @relation("UserWantedRequests")
+  wantedOffers     WantedOffer[]   @relation("UserWantedOffers")
 }
 
 model Product {
-  id          String        @id @default(cuid())
+  id          String          @id @default(cuid())
   title       String
   description String
   price       Float
   type        ProductType
   category    String
-  imageUrl    String?
-  status      ProductStatus @default(AVAILABLE)
-  createdAt   DateTime      @default(now())
-  ownerId     String
-  owner       User          @relation("UserProducts", fields: [ownerId], references: [id])
-  requests    Request[]
+  imageUrl        String?
+  status          ProductStatus          @default(AVAILABLE)
+  isFlagged       Boolean                @default(false)
+  frequency       SubscriptionFrequency?
+  deliverySlots   String?
+  serviceDuration String?
+  createdAt       DateTime               @default(now())
+  ownerId         String
+  owner           User                   @relation("UserProducts", fields: [ownerId], references: [id])
+  requests        Request[]
+  orders          Order[]
+  messages        Message[]
+  reports         ProductReport[]
+  subscriptions   Subscription[]
+  auction         Auction?
+  reviews         Review[]
+  embedding       ProductEmbedding?
 }
 
 model Request {
@@ -83,9 +107,120 @@ model Message {
   toUserId  String
   from      String
   content   String
+  productId String?
   isRead    Boolean  @default(false)
   createdAt DateTime @default(now())
   toUser    User     @relation("MessagesToUser", fields: [toUserId], references: [id])
+  product   Product? @relation(fields: [productId], references: [id], onDelete: SetNull)
+}
+
+model ProductReport {
+  id         String       @id @default(cuid())
+  productId  String
+  product    Product      @relation(fields: [productId], references: [id], onDelete: Cascade)
+  reporterId String
+  reporter   User         @relation("UserReports", fields: [reporterId], references: [id])
+  reason     String
+  details    String?
+  status     ReportStatus @default(PENDING)
+  createdAt  DateTime     @default(now())
+  updatedAt  DateTime     @updatedAt
+}
+
+model Wallet {
+  id            String         @id @default(cuid())
+  userId        String         @unique
+  user          User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  balance       Float          @default(0.0)
+  escrowBalance Float          @default(0.0)
+  currency      String         @default("INR")
+  createdAt     DateTime       @default(now())
+  updatedAt     DateTime       @updatedAt
+  ledgerEntries WalletLedger[]
+}
+
+model WalletLedger {
+  id            String      @id @default(cuid())
+  walletId      String
+  wallet        Wallet      @relation(fields: [walletId], references: [id], onDelete: Cascade)
+  amount        Float
+  type          LedgerType
+  balanceBefore Float
+  balanceAfter  Float
+  escrowBefore  Float       @default(0.0)
+  escrowAfter   Float       @default(0.0)
+  referenceType String
+  referenceId   String?
+  description   String
+  createdAt     DateTime    @default(now())
+}
+
+model Order {
+  id                String             @id @default(cuid())
+  orderNumber       String             @unique
+  buyerId           String
+  buyer             User               @relation("BuyerOrders", fields: [buyerId], references: [id])
+  sellerId          String
+  seller            User               @relation("SellerOrders", fields: [sellerId], references: [id])
+  productId         String
+  product           Product            @relation(fields: [productId], references: [id])
+  price             Float
+  platformFee       Float              @default(0.0)
+  totalAmount       Float
+  orderType         OrderType          @default(PURCHASE)
+  rentalDays        Int?
+  rentalStartDate   DateTime?
+  rentalEndDate     DateTime?
+  securityDeposit   Float              @default(0.0)
+  status            OrderStatus        @default(PENDING_PAYMENT)
+  paymentMethod     OrderPaymentMethod @default(WALLET)
+  pickupOtp         String?
+  returnOtp         String?
+  disputeReason     String?
+  disputedAt        DateTime?
+  disputeResolution String?
+  completedAt       DateTime?
+  cancelledAt       DateTime?
+  auction           Auction?           @relation("AuctionOrder")
+  reviews           Review[]
+  wantedOffer       WantedOffer?       @relation("WantedOfferOrder")
+  createdAt         DateTime           @default(now())
+  updatedAt         DateTime           @updatedAt
+}
+
+model Subscription {
+  id                 String                @id @default(cuid())
+  subscriptionNumber String                @unique
+  subscriberId       String
+  subscriber         User                  @relation("UserSubscriptions", fields: [subscriberId], references: [id])
+  providerId         String
+  provider           User                  @relation("ProviderSubscriptions", fields: [providerId], references: [id])
+  productId          String
+  product            Product               @relation(fields: [productId], references: [id])
+  frequency          SubscriptionFrequency @default(MONTHLY)
+  cycleAmount        Float
+  platformFee        Float                 @default(0.0)
+  startDate          DateTime
+  endDate            DateTime
+  nextBillingDate    DateTime
+  status             SubscriptionStatus    @default(ACTIVE)
+  autoRenew          Boolean               @default(false)
+  deliverySlots      String?
+  vacationFrom       DateTime?
+  vacationTo         DateTime?
+  deliveries         SubscriptionDelivery[]
+  createdAt          DateTime              @default(now())
+  updatedAt          DateTime              @updatedAt
+}
+
+model SubscriptionDelivery {
+  id             String                 @id @default(cuid())
+  subscriptionId String
+  subscription   Subscription           @relation(fields: [subscriptionId], references: [id], onDelete: Cascade)
+  scheduledDate  DateTime
+  status         DeliveryScheduleStatus @default(SCHEDULED)
+  note           String?
+  createdAt      DateTime               @default(now())
 }
 
 enum Role {
@@ -96,11 +231,15 @@ enum Role {
 enum ProductType {
   SELL
   RENT
+  SERVICE
+  SUBSCRIPTION
+  AUCTION
 }
 
 enum ProductStatus {
   AVAILABLE
   RESERVED
+  RENTED
   SOLD
 }
 
@@ -121,4 +260,205 @@ enum PaymentStatus {
 enum PaymentMethod {
   CASH
   ONLINE
+}
+
+enum LedgerType {
+  CREDIT
+  DEBIT
+  HOLD
+  RELEASE
+  REFUND
+}
+
+enum OrderType {
+  PURCHASE
+  RENTAL
+  SERVICE
+  AUCTION
+}
+
+enum OrderStatus {
+  PENDING_PAYMENT
+  ESCROW_HELD
+  RENTAL_ACTIVE
+  DISPUTED
+  DELIVERED
+  COMPLETED
+  CANCELLED
+  REFUNDED
+}
+
+enum OrderPaymentMethod {
+  WALLET
+  ONLINE
+  CASH
+}
+
+enum ReportStatus {
+  PENDING
+  REVIEWED
+  RESOLVED
+  DISMISSED
+}
+
+enum SubscriptionStatus {
+  ACTIVE
+  PAUSED
+  CANCELLED
+  EXPIRED
+  DISPUTED
+}
+
+enum SubscriptionFrequency {
+  WEEKLY
+  MONTHLY
+}
+
+enum DeliveryScheduleStatus {
+  SCHEDULED
+  COMPLETED
+  SKIPPED
+  MISSED
+}
+
+model SystemSetting {
+  key       String   @id
+  value     String
+  updatedAt DateTime @updatedAt
+}
+
+enum AuctionStatus {
+  PENDING
+  ACTIVE
+  EXTENDED
+  ENDED
+  CANCELLED
+}
+
+model Auction {
+  id                 String        @id @default(cuid())
+  productId          String        @unique
+  product            Product       @relation(fields: [productId], references: [id], onDelete: Cascade)
+  sellerId           String
+  seller             User          @relation("SellerAuctions", fields: [sellerId], references: [id], onDelete: Cascade)
+  startingBid        Float
+  currentBid         Float
+  minIncrement       Float         @default(50.0)
+  reservePrice       Float?
+  startTime          DateTime      @default(now())
+  endTime            DateTime
+  antiSnipingSeconds Int           @default(60)
+  status             AuctionStatus @default(ACTIVE)
+  currentBidderId    String?
+  currentBidder      User?         @relation("CurrentBidderAuctions", fields: [currentBidderId], references: [id], onDelete: SetNull)
+  bids               Bid[]
+  orderId            String?       @unique
+  order              Order?        @relation("AuctionOrder", fields: [orderId], references: [id], onDelete: SetNull)
+  createdAt          DateTime      @default(now())
+  updatedAt          DateTime      @updatedAt
+
+  @@index([status, endTime])
+}
+
+model Bid {
+  id        String   @id @default(cuid())
+  auctionId String
+  auction   Auction  @relation(fields: [auctionId], references: [id], onDelete: Cascade)
+  bidderId  String
+  bidder    User     @relation("UserBids", fields: [bidderId], references: [id], onDelete: Cascade)
+  amount    Float
+  isWinning Boolean  @default(false)
+  createdAt DateTime @default(now())
+
+  @@index([auctionId, amount])
+  @@index([bidderId])
+}
+
+enum ReviewRole {
+  BUYER_TO_SELLER
+  SELLER_TO_BUYER
+}
+
+model Review {
+  id          String     @id @default(cuid())
+  orderId     String
+  order       Order      @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  productId   String?
+  product     Product?   @relation(fields: [productId], references: [id], onDelete: SetNull)
+  reviewerId  String
+  reviewer    User       @relation("ReviewsGiven", fields: [reviewerId], references: [id], onDelete: Cascade)
+  revieweeId  String
+  reviewee    User       @relation("ReviewsReceived", fields: [revieweeId], references: [id], onDelete: Cascade)
+  rating      Int
+  headline    String?
+  comment     String
+  role        ReviewRole
+  isAnonymous Boolean    @default(false)
+  createdAt   DateTime   @default(now())
+  updatedAt   DateTime   @updatedAt
+
+  @@unique([orderId, reviewerId, role])
+  @@index([revieweeId])
+  @@index([productId])
+}
+
+enum WantedRequestStatus {
+  OPEN
+  FULFILLED
+  EXPIRED
+  CANCELLED
+}
+
+enum OfferStatus {
+  PENDING
+  ACCEPTED
+  REJECTED
+  EXPIRED
+}
+
+model WantedRequest {
+  id              String              @id @default(cuid())
+  requesterId     String
+  requester       User                @relation("UserWantedRequests", fields: [requesterId], references: [id], onDelete: Cascade)
+  title           String
+  description     String
+  category        String
+  budget          Float
+  neededBy        DateTime
+  status          WantedRequestStatus @default(OPEN)
+  offers          WantedOffer[]
+  acceptedOfferId String?             @unique
+  createdAt       DateTime            @default(now())
+  updatedAt       DateTime            @updatedAt
+
+  @@index([status, neededBy])
+  @@index([requesterId])
+}
+
+model WantedOffer {
+  id             String         @id @default(cuid())
+  requestId      String
+  request        WantedRequest  @relation(fields: [requestId], references: [id], onDelete: Cascade)
+  offererId      String
+  offerer        User           @relation("UserWantedOffers", fields: [offererId], references: [id], onDelete: Cascade)
+  amount         Float
+  message        String?
+  pickupLocation String
+  status         OfferStatus    @default(PENDING)
+  orderId        String?        @unique
+  order          Order?         @relation("WantedOfferOrder", fields: [orderId], references: [id], onDelete: SetNull)
+  createdAt      DateTime       @default(now())
+  updatedAt      DateTime       @updatedAt
+
+  @@index([requestId])
+  @@index([offererId])
+}
+
+model ProductEmbedding {
+  productId String   @id @map("product_id")
+  product   Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
+  embedding Unsupported("vector(1024)")?
+  updatedAt DateTime @default(now()) @updatedAt @map("updated_at")
+
+  @@map("product_embeddings")
 }

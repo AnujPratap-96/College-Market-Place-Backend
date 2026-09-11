@@ -1,27 +1,32 @@
-// src/utils/sendOtpEmail.ts
-import SibApiV3Sdk from 'sib-api-v3-sdk';
+import { renderOtpEmailHtml, OtpEmailPurpose } from '../templates/otp-email.template';
+import { emailQueue } from '../lib/email-queue';
 
-export const sendOtpEmail = async (toEmail: string, otp: string) => {
-  try {
-    const client = SibApiV3Sdk.ApiClient.instance;
-    client.authentications['api-key'].apiKey = process.env.BREVO_API_KEY!;
+export const sendOtpEmail = async (
+  toEmail: string,
+  otp: string,
+  purpose: OtpEmailPurpose = 'SIGNUP',
+  userName?: string
+): Promise<void> => {
+  const { subject, html } = renderOtpEmailHtml({ otp, purpose, userName });
 
-    const emailApi = new SibApiV3Sdk.TransactionalEmailsApi();
+  emailQueue.enqueue({
+    to: toEmail,
+    subject,
+    html,
+  });
+};
 
-    const emailPayload = {
-      to: [{ email: toEmail }],
-      sender: {
-        name: 'College Market-Place',
-        email: 'officialthakur94@gmail.com',
-      },
-      subject: 'Your OTP Code',
-      htmlContent: `<p>Your OTP is <strong>${otp}</strong></p>`,
-    };
+export const sendOtpEmailSync = async (
+  toEmail: string,
+  otp: string,
+  purpose: OtpEmailPurpose = 'SIGNUP',
+  userName?: string
+): Promise<boolean> => {
+  const { subject, html } = renderOtpEmailHtml({ otp, purpose, userName });
 
-    await emailApi.sendTransacEmail(emailPayload);
-    console.log("✅ OTP email sent!");
-  } catch (error) {
-    console.error("❌ Failed to send email:", error);
-    throw new Error("Email send failed.");
-  }
+  return emailQueue.sendNow({
+    to: toEmail,
+    subject,
+    html,
+  });
 };
