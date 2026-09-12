@@ -50,6 +50,7 @@ app.use(
       }
     },
     credentials: true,
+    exposedHeaders: ['X-Response-Time', 'Server-Timing', 'X-Request-Id'],
   })
 );
 

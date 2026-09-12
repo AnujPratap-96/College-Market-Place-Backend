@@ -20,10 +20,9 @@ export default function errorMiddleware(
   if (err instanceof ZodError) {
     const mappedError = mapZodErrors(err);
     error = new ApiError(400, 'Validation failed', mappedError);
-  } else if (err instanceof ApiError) {
+  } else if (err instanceof ApiError && err.statusCode < 500) {
+    // Client/operational error with explicit safe status code
     error = err;
-  } else if (err instanceof Prisma.PrismaClientInitializationError) {
-    error = new ApiError(503, 'Database service is currently unavailable. Please try again shortly.');
   } else if (err instanceof Prisma.PrismaClientKnownRequestError) {
     if (err.code === 'P2002') {
       const target = err.meta?.target;
@@ -31,31 +30,39 @@ export default function errorMiddleware(
       error = new ApiError(409, `A record with this ${field} already exists.`);
     } else if (err.code === 'P2025') {
       error = new ApiError(404, 'The requested record was not found.');
-    } else if (['P1000', 'P1001', 'P1002', 'P1008', 'P1017'].includes(err.code)) {
-      error = new ApiError(503, 'Database connection could not be established. Please try again shortly.');
     } else {
-      error = new ApiError(400, 'Database request could not be processed.');
+      // Generalize other database request failures as Internal Server Error
+      error = new ApiError(500, 'Internal Server Error');
     }
   } else if (err instanceof Prisma.PrismaClientValidationError) {
-    error = new ApiError(400, 'Invalid request data format.');
+    // Client passed bad parameter shapes to query
+    error = new ApiError(400, 'Invalid request parameters.');
   } else if (
+    err instanceof Prisma.PrismaClientInitializationError ||
     err instanceof Prisma.PrismaClientRustPanicError ||
     err instanceof Prisma.PrismaClientUnknownRequestError
   ) {
-    error = new ApiError(500, 'An internal database error occurred.');
+    // Database infrastructure failures - NEVER leak DB details to client
+    error = new ApiError(500, 'Internal Server Error');
   } else {
-    const statusCode = typeof err.statusCode === 'number' && err.statusCode >= 400 && err.statusCode < 600
+    // Any other unhandled system / runtime error
+    const statusCode = typeof err.statusCode === 'number' && err.statusCode >= 400 && err.statusCode < 500
       ? err.statusCode
       : 500;
     const message = statusCode < 500 && err.message
       ? err.message
-      : 'An unexpected server error occurred. Please try again later.';
+      : 'Internal Server Error';
     error = new ApiError(statusCode, message, null);
   }
 
-  console.error(`[${req.id || 'REQ'}] ${req.method} ${req.originalUrl} - ${error.statusCode}: ${err.message || error.message}`);
-  if (err.stack) {
-    console.error(err.stack);
+  // Server-side logging: Full details and stack trace preserved for developers
+  if (error.statusCode >= 500) {
+    console.error(`[${req.id || 'REQ'}] [SYSTEM ERROR] ${req.method} ${req.originalUrl} - ${error.statusCode}:`, err);
+    if (err?.stack) {
+      console.error(err.stack);
+    }
+  } else {
+    console.warn(`[${req.id || 'REQ'}] [CLIENT ERROR] ${req.method} ${req.originalUrl} - ${error.statusCode}: ${error.message}`);
   }
 
   errorResponse(res, {

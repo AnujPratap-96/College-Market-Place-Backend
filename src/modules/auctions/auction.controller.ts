@@ -66,3 +66,18 @@ export const settleAuction = asyncHandler(async (req: Request, res: Response) =>
     data: { auction },
   });
 });
+
+export const cancelAuction = asyncHandler(async (req: Request, res: Response) => {
+  const userId = req.userId!;
+  const isAdmin = req.role === 'ADMIN';
+  const id = (req.validated?.params?.id || req.params.id) as string;
+  const { reason } = req.body || {};
+
+  const auction = await auctionService.cancelAuction(userId, id, isAdmin, reason);
+
+  return successResponse(res, {
+    statusCode: 200,
+    message: 'Auction cancelled and any active bids refunded',
+    data: { auction },
+  });
+});

@@ -78,6 +78,15 @@ export class MessageRepository {
       data: { isRead: true },
     });
   }
+
+  async countUnread(userId: string): Promise<number> {
+    return prisma.message.count({
+      where: {
+        toUserId: userId,
+        isRead: false,
+      },
+    });
+  }
 }
 
 export const messageRepository = new MessageRepository();

@@ -207,3 +207,37 @@ export const getAssistantEmbeddingsStatus = asyncHandler(async (req: Request, re
     data: stats,
   });
 });
+
+export const getPendingAuctions = asyncHandler(async (req: Request, res: Response) => {
+  const userId = req.userId!;
+  const auctions = await adminService.getPendingAuctions(userId);
+  return successResponse(res, {
+    statusCode: 200,
+    message: 'Pending auctions retrieved successfully',
+    data: { auctions },
+  });
+});
+
+export const approveAuction = asyncHandler(async (req: Request, res: Response) => {
+  const userId = req.userId!;
+  const auctionId = (req.validated?.params?.id || req.params.id) as string;
+  const { durationHours } = req.validated?.body || req.body || {};
+  const auction = await adminService.approveAuction(userId, auctionId, durationHours);
+  return successResponse(res, {
+    statusCode: 200,
+    message: 'Auction approved and live successfully',
+    data: { auction },
+  });
+});
+
+export const rejectAuction = asyncHandler(async (req: Request, res: Response) => {
+  const userId = req.userId!;
+  const auctionId = (req.validated?.params?.id || req.params.id) as string;
+  const { reason } = req.validated?.body || req.body || {};
+  const auction = await adminService.rejectAuction(userId, auctionId, reason);
+  return successResponse(res, {
+    statusCode: 200,
+    message: 'Auction rejected successfully',
+    data: { auction },
+  });
+});

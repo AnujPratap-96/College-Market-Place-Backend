@@ -56,3 +56,13 @@ export const markAsRead = asyncHandler(async (req: Request, res: Response) => {
     data: null,
   });
 });
+
+export const getUnreadCount = asyncHandler(async (req: Request, res: Response) => {
+  const userId = req.userId!;
+  const unreadCount = await messageService.getUnreadCount(userId);
+  return successResponse(res, {
+    statusCode: 200,
+    message: 'Unread count retrieved successfully',
+    data: { unreadCount },
+  });
+});

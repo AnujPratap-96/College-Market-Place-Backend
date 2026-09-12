@@ -24,7 +24,7 @@ export class AuthService {
     await this.repo.createOtp(email, otp, expiresAt);
 
     await sendOtpEmail(email, otp, 'SIGNUP');
-    const signupToken = jwt.sign({ email }, env.JWT_SIGNUP_SECRET, { expiresIn: '30m' });
+    const signupToken = jwt.sign({ email, purpose: 'SIGNUP_PENDING' }, env.JWT_SIGNUP_SECRET, { expiresIn: '15m' });
     return { message: 'OTP sent to your email.', signupToken };
   }
 
@@ -36,7 +36,7 @@ export class AuthService {
 
     await this.repo.deleteOtpsForEmail(email);
 
-    const signupToken = jwt.sign({ email }, env.JWT_SIGNUP_SECRET, { expiresIn: '30m' });
+    const signupToken = jwt.sign({ email, purpose: 'SIGNUP_VERIFIED', verified: true }, env.JWT_SIGNUP_SECRET, { expiresIn: '30m' });
 
     return { message: 'Email verified successfully.', signupToken };
   }
@@ -50,12 +50,15 @@ export class AuthService {
     branch: string;
     year: string;
   }): Promise<{ user: any; authToken: string }> {
-    const existingEmail = await this.repo.findUserByEmail(data.email);
+    const [existingEmail, existingPhone] = await Promise.all([
+      this.repo.findUserByEmail(data.email),
+      this.repo.findUserByPhone(data.phone),
+    ]);
+
     if (existingEmail) {
       throw new ApiError(400, 'User already registered.');
     }
 
-    const existingPhone = await this.repo.findUserByPhone(data.phone);
     if (existingPhone) {
       throw new ApiError(400, 'Phone number is already associated with another account.');
     }
@@ -106,18 +109,19 @@ export class AuthService {
     await this.repo.createOtp(email, otp, expiresAt);
     await sendOtpEmail(email, otp, 'RESET', user.name);
 
-    const signupToken = jwt.sign({ email }, env.JWT_SIGNUP_SECRET, { expiresIn: '15m' });
+    const resetPendingToken = jwt.sign({ email, purpose: 'RESET_PENDING' }, env.JWT_SIGNUP_SECRET, { expiresIn: '15m' });
 
-    return { message: 'Password reset OTP sent to your email.', signupToken };
+    return { message: 'Password reset OTP sent to your email.', signupToken: resetPendingToken };
   }
 
-  async verifyResetOtp(email: string, otp: string): Promise<{ message: string }> {
+  async verifyResetOtp(email: string, otp: string): Promise<{ message: string; resetToken: string }> {
     const validOtp = await this.repo.findValidOtp(email, otp);
     if (!validOtp) {
       throw new ApiError(400, 'Invalid or expired OTP.');
     }
     await this.repo.deleteOtpsForEmail(email);
-    return { message: 'OTP verified. You may now reset your password.' };
+    const resetToken = jwt.sign({ email, purpose: 'RESET_VERIFIED', verified: true }, env.JWT_SIGNUP_SECRET, { expiresIn: '15m' });
+    return { message: 'OTP verified. You may now reset your password.', resetToken };
   }
 
   async resetPassword(email: string, newPasswordPlain: string): Promise<{ message: string }> {

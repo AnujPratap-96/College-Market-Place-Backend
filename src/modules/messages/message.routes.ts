@@ -5,6 +5,7 @@ import {
   getConversation,
   getConversationsList,
   markAsRead,
+  getUnreadCount,
 } from './message.controller';
 import { requireAuth } from '../../middlewares/auth.middleware';
 import { validate } from '../../middlewares/validate.middleware';
@@ -17,6 +18,7 @@ import {
 const router = Router();
 
 router.get('/', requireAuth, getMyMessages);
+router.get('/unread-count', requireAuth, getUnreadCount);
 router.get('/conversations', requireAuth, getConversationsList);
 router.get('/conversation/:userId', requireAuth, validate(conversationParamSchema), getConversation);
 router.post('/', requireAuth, validate(sendMessageSchema), sendMessage);

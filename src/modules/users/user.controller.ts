@@ -9,7 +9,7 @@ export const getProfile = asyncHandler(async (req: Request, res: Response) => {
   return successResponse(res, {
     statusCode: 200,
     message: 'Profile retrieved successfully',
-    data: { user },
+    data: { user, ...user },
   });
 });
 
@@ -20,6 +20,6 @@ export const updateProfile = asyncHandler(async (req: Request, res: Response) =>
   return successResponse(res, {
     statusCode: 200,
     message: 'Profile updated successfully',
-    data: { user },
+    data: { user, ...user },
   });
 });

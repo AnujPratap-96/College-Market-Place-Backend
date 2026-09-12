@@ -68,8 +68,9 @@ export class UploadService {
       throw new ApiError(400, 'File size exceeds maximum limit of 5MB.');
     }
 
-    if (!file.mimetype.startsWith('image/')) {
-      throw new ApiError(400, 'Only image files are permitted.');
+    const allowedMimes = ['image/jpeg', 'image/jpg', 'image/png', 'image/webp', 'image/avif'];
+    if (!allowedMimes.includes(file.mimetype.toLowerCase())) {
+      throw new ApiError(400, 'Invalid file type. Only JPEG, PNG, WebP, and AVIF images are permitted.');
     }
 
     const ext = file.originalname.split('.').pop()?.toLowerCase() || 'jpg';

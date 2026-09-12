@@ -124,6 +124,10 @@ export class MessageService {
 
     return result;
   }
+
+  async getUnreadCount(userId: string): Promise<number> {
+    return this.repo.countUnread(userId);
+  }
 }
 
 export const messageService = new MessageService();

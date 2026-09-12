@@ -3,38 +3,50 @@ import { ReportStatus, OrderStatus, Prisma } from '@prisma/client';
 
 export class AdminRepository {
   async getStats() {
-    const totalUsers = await prisma.user.count();
-    const verifiedUsers = await prisma.user.count({ where: { isVerified: true } });
-    const totalProducts = await prisma.product.count();
-    const availableProducts = await prisma.product.count({ where: { status: 'AVAILABLE' } });
-    const soldProducts = await prisma.product.count({ where: { status: 'SOLD' } });
-    const totalRequests = await prisma.request.count();
-    const completedRequests = await prisma.request.count({ where: { status: 'COMPLETED' } });
-    const totalTransactions = await prisma.transaction.count();
-
-    const sellCount = await prisma.product.count({ where: { type: 'SELL' } });
-    const rentCount = await prisma.product.count({ where: { type: 'RENT' } });
-
-    const recentUsers = await prisma.user.findMany({
-      take: 5,
-      orderBy: { createdAt: 'desc' },
-      select: { id: true, name: true, email: true, college: true, role: true, createdAt: true },
-    });
-
-    const recentTransactions = await prisma.transaction.findMany({
-      take: 5,
-      orderBy: { createdAt: 'desc' },
-      include: {
-        request: {
-          select: {
-            id: true,
-            totalAmount: true,
-            buyer: { select: { name: true } },
-            seller: { select: { name: true } },
+    const [
+      totalUsers,
+      verifiedUsers,
+      totalProducts,
+      availableProducts,
+      soldProducts,
+      totalRequests,
+      completedRequests,
+      totalTransactions,
+      sellCount,
+      rentCount,
+      recentUsers,
+      recentTransactions,
+    ] = await Promise.all([
+      prisma.user.count(),
+      prisma.user.count({ where: { isVerified: true } }),
+      prisma.product.count(),
+      prisma.product.count({ where: { status: 'AVAILABLE' } }),
+      prisma.product.count({ where: { status: 'SOLD' } }),
+      prisma.request.count(),
+      prisma.request.count({ where: { status: 'COMPLETED' } }),
+      prisma.transaction.count(),
+      prisma.product.count({ where: { type: 'SELL' } }),
+      prisma.product.count({ where: { type: 'RENT' } }),
+      prisma.user.findMany({
+        take: 5,
+        orderBy: { createdAt: 'desc' },
+        select: { id: true, name: true, email: true, college: true, role: true, createdAt: true },
+      }),
+      prisma.transaction.findMany({
+        take: 5,
+        orderBy: { createdAt: 'desc' },
+        include: {
+          request: {
+            select: {
+              id: true,
+              totalAmount: true,
+              buyer: { select: { name: true } },
+              seller: { select: { name: true } },
+            },
           },
         },
-      },
-    });
+      }),
+    ]);
 
     return {
       stats: {

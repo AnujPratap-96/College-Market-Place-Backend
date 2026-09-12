@@ -35,14 +35,15 @@ export const errorResponse = (
   res: Response,
   { statusCode = 500, message = 'Internal Server Error', error = null }: ErrorResponseOptions
 ) => {
-  const resolvedMessage = error && typeof error === 'string'
-    ? error
-    : (message || 'Internal Server Error');
+  const isServerSystemError = statusCode >= 500;
+  const resolvedMessage = isServerSystemError
+    ? 'Internal Server Error'
+    : (error && typeof error === 'string' ? error : (message || 'An error occurred'));
 
   return res.status(statusCode).json({
     success: false,
     message: resolvedMessage,
     error: resolvedMessage,
-    details: typeof error === 'object' && error !== null && !(error instanceof Error) ? error : null,
+    details: !isServerSystemError && typeof error === 'object' && error !== null && !(error instanceof Error) ? error : null,
   });
 };

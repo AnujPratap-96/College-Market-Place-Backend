@@ -9,7 +9,7 @@ import {
   cancelSubscription,
   settleEndedCycles,
 } from './subscription.controller';
-import { requireAuth } from '../../middlewares/auth.middleware';
+import { requireAuth, requireAdmin } from '../../middlewares/auth.middleware';
 import { validate } from '../../middlewares/validate.middleware';
 import {
   subscribeSchema,
@@ -28,6 +28,6 @@ router.post('/:id/vacation', requireAuth, validate(vacationSchema), setVacation)
 router.post('/:id/resume', requireAuth, validate(subscriptionIdParamSchema), resumeVacation);
 router.post('/:id/report-missed', requireAuth, validate(reportMissedSchema), reportMissedDelivery);
 router.post('/:id/cancel', requireAuth, validate(subscriptionIdParamSchema), cancelSubscription);
-router.post('/cron/settle', requireAuth, settleEndedCycles);
+router.post('/cron/settle', requireAuth, requireAdmin, settleEndedCycles);
 
 export default router;

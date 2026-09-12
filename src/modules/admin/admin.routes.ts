@@ -17,6 +17,9 @@ import {
   updateSystemSettings,
   syncAssistantEmbeddings,
   getAssistantEmbeddingsStatus,
+  getPendingAuctions,
+  approveAuction,
+  rejectAuction,
 } from './admin.controller';
 import { requireAuth } from '../../middlewares/auth.middleware';
 import { validate } from '../../middlewares/validate.middleware';
@@ -52,5 +55,9 @@ router.patch('/settings', requireAuth, validate(adminUpdateSettingsSchema), upda
 
 router.post('/assistant/sync-embeddings', requireAuth, syncAssistantEmbeddings);
 router.get('/assistant/embeddings-status', requireAuth, getAssistantEmbeddingsStatus);
+
+router.get('/auctions/pending', requireAuth, getPendingAuctions);
+router.post('/auctions/:id/approve', requireAuth, approveAuction);
+router.post('/auctions/:id/reject', requireAuth, rejectAuction);
 
 export default router;

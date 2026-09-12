@@ -3,6 +3,8 @@ import { ApiError } from '../../utils/api-error';
 import { ProductType } from '@prisma/client';
 import { emitToUser } from '../../lib/socket';
 import { campusVectorService } from '../assistant/campus-vector.service';
+import prisma from '../../lib/prisma';
+import { auctionService } from '../auctions/auction.service';
 
 const PROHIBITED_KEYWORDS = [
   'weapon', 'gun', 'knife', 'explosive', 'drug', 'weed', 'cannabis',
@@ -132,6 +134,14 @@ export class ProductService {
 
     if (product.ownerId !== userId) {
       throw new ApiError(403, 'Not authorized to delete this product.');
+    }
+
+    // If deleting an auction, refund any locked bidder escrow first
+    const existingAuction = await prisma.auction.findUnique({
+      where: { productId: id },
+    });
+    if (existingAuction && existingAuction.status !== 'ENDED' && existingAuction.status !== 'CANCELLED') {
+      await auctionService.cancelAuction(userId, existingAuction.id, true, 'Product deleted by owner');
     }
 
     const deleted = await this.repo.delete(id);

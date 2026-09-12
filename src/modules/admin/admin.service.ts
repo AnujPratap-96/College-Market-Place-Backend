@@ -8,6 +8,7 @@ import { emitToUser } from '../../lib/socket';
 import { settingsService } from './settings.service';
 import { domainEvents } from '../../lib/events';
 import { campusVectorService } from '../assistant/campus-vector.service';
+import { auctionService } from '../auctions/auction.service';
 
 export class AdminService {
   constructor(private repo: AdminRepository = adminRepository) {}
@@ -59,6 +60,12 @@ export class AdminService {
 
   async deleteProduct(userId: string, targetProductId: string) {
     await this.checkIsAdmin(userId);
+    const existingAuction = await prisma.auction.findUnique({
+      where: { productId: targetProductId },
+    });
+    if (existingAuction && existingAuction.status !== 'ENDED' && existingAuction.status !== 'CANCELLED') {
+      await auctionService.cancelAuction(userId, existingAuction.id, true, 'Product deleted by administrator');
+    }
     const result = await this.repo.deleteProduct(targetProductId);
     campusVectorService.removeProduct(targetProductId);
     return result;
@@ -125,7 +132,14 @@ export class AdminService {
 
     if (action === 'DELETE_PRODUCT') {
       await this.repo.updateReportStatus(reportId, ReportStatus.RESOLVED);
+      const existingAuction = await prisma.auction.findUnique({
+        where: { productId: report.productId },
+      });
+      if (existingAuction && existingAuction.status !== 'ENDED' && existingAuction.status !== 'CANCELLED') {
+        await auctionService.cancelAuction(userId, existingAuction.id, true, 'Product removed by admin due to report');
+      }
       await this.repo.deleteProduct(report.productId);
+      campusVectorService.removeProduct(report.productId);
       emitToUser(report.product.ownerId, 'product_moderation_alert', {
         productId: report.productId,
         message: 'Your product listing was permanently removed due to policy violations.',
@@ -162,12 +176,13 @@ export class AdminService {
 
       if (action === 'REFUND_BUYER') {
         if (order.paymentMethod === 'WALLET') {
-          if (order.orderType === OrderType.PURCHASE) {
-            await walletService.refundEscrow(order.buyerId, order.totalAmount, order.id, tx);
-          } else {
+          if (order.orderType === OrderType.RENTAL) {
             if (order.securityDeposit > 0) {
               await walletService.refundSecurityDeposit(order.buyerId, order.securityDeposit, order.id, tx);
             }
+          } else {
+            // Handles PURCHASE, AUCTION, SERVICE
+            await walletService.refundEscrow(order.buyerId, order.totalAmount, order.id, tx);
           }
         }
 
@@ -202,16 +217,7 @@ export class AdminService {
         return updatedOrder;
       } else {
         if (order.paymentMethod === 'WALLET') {
-          if (order.orderType === OrderType.PURCHASE) {
-            await walletService.releaseEscrow(
-              order.buyerId,
-              order.sellerId,
-              order.totalAmount,
-              order.platformFee,
-              order.id,
-              tx
-            );
-          } else {
+          if (order.orderType === OrderType.RENTAL) {
             if (order.securityDeposit > 0) {
               await walletService.releaseSecurityDepositToSeller(
                 order.buyerId,
@@ -221,12 +227,27 @@ export class AdminService {
                 tx
               );
             }
+          } else {
+            // Handles PURCHASE, AUCTION, SERVICE
+            await walletService.releaseEscrow(
+              order.buyerId,
+              order.sellerId,
+              order.totalAmount,
+              order.platformFee,
+              order.id,
+              tx
+            );
           }
         }
 
         await tx.product.update({
           where: { id: order.productId },
-          data: { status: order.orderType === OrderType.PURCHASE ? ProductStatus.SOLD : ProductStatus.AVAILABLE },
+          data: {
+            status:
+              order.orderType === OrderType.PURCHASE || order.orderType === OrderType.AUCTION
+                ? ProductStatus.SOLD
+                : ProductStatus.AVAILABLE,
+          },
         });
 
         const updatedOrder = await tx.order.update({
@@ -288,6 +309,21 @@ export class AdminService {
   async getAssistantEmbeddingsStatus(userId: string) {
     await this.checkIsAdmin(userId);
     return campusVectorService.getStats();
+  }
+
+  async getPendingAuctions(userId: string) {
+    await this.checkIsAdmin(userId);
+    return auctionService.getPendingAuctions();
+  }
+
+  async approveAuction(userId: string, auctionId: string, durationHours?: number) {
+    await this.checkIsAdmin(userId);
+    return auctionService.approveAuction(auctionId, durationHours);
+  }
+
+  async rejectAuction(userId: string, auctionId: string, reason?: string) {
+    await this.checkIsAdmin(userId);
+    return auctionService.rejectAuction(auctionId, reason);
   }
 }
 

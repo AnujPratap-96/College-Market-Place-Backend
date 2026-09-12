@@ -13,7 +13,7 @@ import {
   resendOtp,
 } from './auth.controller';
 import { getProfile, updateProfile } from '../users/user.controller';
-import { requireAuth, requireSignUpAuth } from '../../middlewares/auth.middleware';
+import { requireAuth, requireSignUpAuth, requireOtpPendingAuth, requireResetAuth } from '../../middlewares/auth.middleware';
 import { validate } from '../../middlewares/validate.middleware';
 import {
   emailSignupSchema,
@@ -32,7 +32,7 @@ import { updateProfileSchema } from '../users/user.schema';
 const router = Router();
 
 router.post('/signup-email', validate(emailSignupSchema), emailSignup);
-router.post('/verify-otp', requireSignUpAuth, validate(verifyOtpSchema), verifyOtp);
+router.post('/verify-otp', requireOtpPendingAuth, validate(verifyOtpSchema), verifyOtp);
 router.post('/complete-signup', requireSignUpAuth, validate(completeSignupSchema), completeSignup);
 router.post('/login', validate(loginSchema), login);
 router.post('/login-otp', validate(loginOtpSchema), loginOtp);
@@ -44,7 +44,7 @@ router.get('/profile', requireAuth, getProfile);
 router.patch('/profile', requireAuth, validate(updateProfileSchema), updateProfile);
 
 router.post('/forgot-password', validate(forgotPasswordSchema), forgotPassword);
-router.post('/verify-reset-otp', requireSignUpAuth, validate(verifyResetOtpSchema), verifyResetOtp);
-router.post('/reset-password', requireSignUpAuth, validate(resetPasswordSchema), resetPassword);
+router.post('/verify-reset-otp', requireOtpPendingAuth, validate(verifyResetOtpSchema), verifyResetOtp);
+router.post('/reset-password', requireResetAuth, validate(resetPasswordSchema), resetPassword);
 
 export default router;

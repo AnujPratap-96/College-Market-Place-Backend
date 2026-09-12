@@ -24,6 +24,10 @@ export class WalletService {
   }
 
   async topup(userId: string, amount: number) {
+    if (process.env.NODE_ENV === 'production') {
+      throw new ApiError(403, 'Direct wallet top-up is disabled in production. Please use the payment gateway.');
+    }
+
     if (amount <= 0) {
       throw new ApiError(400, 'Top-up amount must be greater than zero.');
     }
@@ -787,7 +791,10 @@ export class WalletService {
     }
 
     const secret = process.env.RAZORPAY_KEY_SECRET;
-    if (secret && razorpaySignature) {
+    if (secret) {
+      if (!razorpaySignature) {
+        throw new ApiError(400, 'Razorpay signature is required for payment verification.');
+      }
       const generatedSignature = crypto
         .createHmac('sha256', secret)
         .update(`${razorpayOrderId}|${razorpayPaymentId}`)
@@ -796,6 +803,8 @@ export class WalletService {
       if (generatedSignature !== razorpaySignature) {
         throw new ApiError(400, 'Invalid payment signature. Gateway verification failed.');
       }
+    } else if (process.env.NODE_ENV === 'production') {
+      throw new ApiError(500, 'Payment gateway secret not configured.');
     }
 
     return prisma.$transaction(

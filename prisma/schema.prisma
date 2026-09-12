@@ -65,6 +65,11 @@ model Product {
   auction         Auction?
   reviews         Review[]
   embedding       ProductEmbedding?
+
+  @@index([status, isFlagged, createdAt])
+  @@index([category, status])
+  @@index([type, status])
+  @@index([ownerId])
 }
 
 model Request {
@@ -81,6 +86,10 @@ model Request {
   product     Product       @relation(fields: [productId], references: [id])
   seller      User          @relation("SellerRequests", fields: [sellerId], references: [id])
   transaction Transaction?
+
+  @@index([buyerId, status])
+  @@index([sellerId, status])
+  @@index([productId])
 }
 
 model Transaction {
@@ -100,6 +109,8 @@ model OTP {
   code      String
   expiresAt DateTime
   createdAt DateTime @default(now())
+
+  @@index([email, createdAt])
 }
 
 model Message {
@@ -112,6 +123,9 @@ model Message {
   createdAt DateTime @default(now())
   toUser    User     @relation("MessagesToUser", fields: [toUserId], references: [id])
   product   Product? @relation(fields: [productId], references: [id], onDelete: SetNull)
+
+  @@index([toUserId, isRead])
+  @@index([toUserId, from, createdAt])
 }
 
 model ProductReport {
@@ -153,6 +167,9 @@ model WalletLedger {
   referenceId   String?
   description   String
   createdAt     DateTime    @default(now())
+
+  @@index([walletId, createdAt])
+  @@index([walletId, type, createdAt])
 }
 
 model Order {
@@ -186,6 +203,10 @@ model Order {
   wantedOffer       WantedOffer?       @relation("WantedOfferOrder")
   createdAt         DateTime           @default(now())
   updatedAt         DateTime           @updatedAt
+
+  @@index([buyerId, createdAt])
+  @@index([sellerId, createdAt])
+  @@index([status, createdAt])
 }
 
 model Subscription {
@@ -211,6 +232,9 @@ model Subscription {
   deliveries         SubscriptionDelivery[]
   createdAt          DateTime              @default(now())
   updatedAt          DateTime              @updatedAt
+
+  @@index([subscriberId, status])
+  @@index([providerId, status])
 }
 
 model SubscriptionDelivery {

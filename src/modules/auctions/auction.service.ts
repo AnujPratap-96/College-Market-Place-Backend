@@ -45,7 +45,7 @@ export class AuctionService {
           startTime,
           endTime,
           antiSnipingSeconds: input.antiSnipingSeconds ?? 60,
-          status: AuctionStatus.ACTIVE,
+          status: AuctionStatus.PENDING,
         },
         include: {
           product: true,
@@ -62,6 +62,12 @@ export class AuctionService {
         },
       });
 
+      emitToUser(sellerId, 'auction_submitted', {
+        auctionId: auction.id,
+        productTitle: product.title,
+        message: 'Your auction has been submitted for campus admin approval and will go live once verified.',
+      });
+
       return auction;
     });
   }
@@ -73,6 +79,9 @@ export class AuctionService {
 
     if (filters?.status) {
       where.status = filters.status;
+    } else {
+      // By default, only show approved, active, extended, or completed auctions in public arena
+      where.status = { in: [AuctionStatus.ACTIVE, AuctionStatus.EXTENDED, AuctionStatus.ENDED] };
     }
 
     if (filters?.category && filters.category !== 'ALL') {
@@ -204,8 +213,13 @@ export class AuctionService {
           throw new ApiError(404, 'Auction not found');
         }
 
-        if (auction.status === AuctionStatus.ENDED || auction.status === AuctionStatus.CANCELLED) {
-          throw new ApiError(400, 'Auction is no longer active');
+        if (auction.status !== AuctionStatus.ACTIVE && auction.status !== AuctionStatus.EXTENDED) {
+          throw new ApiError(
+            400,
+            auction.status === AuctionStatus.PENDING
+              ? 'This auction is currently awaiting campus admin approval before bidding begins.'
+              : 'Auction is no longer active for bidding.'
+          );
         }
 
         if (new Date() >= auction.endTime) {
@@ -492,6 +506,186 @@ export class AuctionService {
         console.error(`Error auto-settling auction ${item.id}:`, err);
       }
     }
+  }
+
+  async getPendingAuctions() {
+    return prisma.auction.findMany({
+      where: { status: AuctionStatus.PENDING },
+      include: {
+        product: true,
+        seller: {
+          select: {
+            id: true,
+            name: true,
+            email: true,
+            phone: true,
+            college: true,
+            branch: true,
+            year: true,
+            profileImage: true,
+          },
+        },
+      },
+      orderBy: { createdAt: 'desc' },
+    });
+  }
+
+  async approveAuction(auctionId: string, durationHours?: number) {
+    const auction = await prisma.auction.findUnique({
+      where: { id: auctionId },
+      include: { product: true, seller: true },
+    });
+
+    if (!auction) {
+      throw new ApiError(404, 'Auction not found.');
+    }
+
+    if (auction.status !== AuctionStatus.PENDING) {
+      throw new ApiError(400, `Auction is not pending approval (current status: ${auction.status}).`);
+    }
+
+    const duration = durationHours || 24;
+    const startTime = new Date();
+    const endTime = new Date(startTime.getTime() + duration * 3600 * 1000);
+
+    const updated = await prisma.$transaction(async (tx) => {
+      await tx.product.update({
+        where: { id: auction.productId },
+        data: { status: ProductStatus.AVAILABLE },
+      });
+
+      return tx.auction.update({
+        where: { id: auction.id },
+        data: {
+          status: AuctionStatus.ACTIVE,
+          startTime,
+          endTime,
+        },
+        include: {
+          product: true,
+          seller: {
+            select: {
+              id: true,
+              name: true,
+              college: true,
+              profileImage: true,
+            },
+          },
+        },
+      });
+    });
+
+    emitToAuction(auction.id, 'auction_approved', {
+      auctionId: auction.id,
+      endTime,
+    });
+
+    emitToUser(auction.sellerId, 'auction_approved', {
+      auctionId: auction.id,
+      productTitle: auction.product.title,
+      endTime,
+      message: `Your auction for "${auction.product.title}" has been approved and is now live!`,
+    });
+
+    return updated;
+  }
+
+  async rejectAuction(auctionId: string, reason?: string) {
+    const auction = await prisma.auction.findUnique({
+      where: { id: auctionId },
+      include: { product: true },
+    });
+
+    if (!auction) {
+      throw new ApiError(404, 'Auction not found.');
+    }
+
+    if (auction.status !== AuctionStatus.PENDING) {
+      throw new ApiError(400, `Auction is not pending approval (current status: ${auction.status}).`);
+    }
+
+    const updated = await prisma.$transaction(async (tx) => {
+      await tx.product.update({
+        where: { id: auction.productId },
+        data: { status: ProductStatus.AVAILABLE },
+      });
+
+      return tx.auction.update({
+        where: { id: auction.id },
+        data: { status: AuctionStatus.CANCELLED },
+        include: { product: true },
+      });
+    });
+
+    emitToUser(auction.sellerId, 'auction_rejected', {
+      auctionId: auction.id,
+      productTitle: auction.product.title,
+      reason: reason || 'Listing does not comply with campus auction guidelines.',
+      message: `Your auction for "${auction.product.title}" was not approved: ${reason || 'Campus policy violation'}.`,
+    });
+
+    return updated;
+  }
+
+  async cancelAuction(userId: string, auctionId: string, isAdmin: boolean = false, reason?: string) {
+    const auction = await prisma.auction.findUnique({
+      where: { id: auctionId },
+      include: {
+        product: true,
+        currentBidder: true,
+      },
+    });
+
+    if (!auction) {
+      throw new ApiError(404, 'Auction not found.');
+    }
+
+    if (!isAdmin && auction.sellerId !== userId) {
+      throw new ApiError(403, 'You are not authorized to cancel this auction.');
+    }
+
+    if (auction.status === AuctionStatus.ENDED || auction.status === AuctionStatus.CANCELLED) {
+      throw new ApiError(400, 'Auction has already ended or been cancelled.');
+    }
+
+    return prisma.$transaction(async (tx) => {
+      if (auction.currentBidderId && auction.currentBid > 0) {
+        await walletService.refundAuctionBid(
+          auction.currentBidderId,
+          auction.currentBid,
+          auction.id,
+          reason || `Auction cancelled by ${isAdmin ? 'admin' : 'seller'}`,
+          tx
+        );
+      }
+
+      await tx.product.update({
+        where: { id: auction.productId },
+        data: { status: ProductStatus.AVAILABLE },
+      });
+
+      const cancelled = await tx.auction.update({
+        where: { id: auction.id },
+        data: { status: AuctionStatus.CANCELLED },
+        include: { product: true },
+      });
+
+      if (auction.currentBidderId) {
+        emitToUser(auction.currentBidderId, 'auction_cancelled', {
+          auctionId: auction.id,
+          productTitle: auction.product.title,
+          refundedAmount: auction.currentBid,
+          message: `Auction for "${auction.product.title}" was cancelled. Your ₹${auction.currentBid.toFixed(2)} bid has been refunded to your wallet.`,
+        });
+      }
+
+      emitToAuction(auction.id, 'auction_cancelled', {
+        auctionId: auction.id,
+        reason: reason || 'Auction cancelled',
+      });
+
+      return cancelled;
+    });
   }
 }
 

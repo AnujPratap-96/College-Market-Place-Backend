@@ -57,7 +57,7 @@ export const completeSignup = asyncHandler(async (req: Request, res: Response) =
   });
 
   return successResponse(res, {
-    statusCode: 201,
+    statusCode: 200,
     message: 'Signup complete! Welcome to College Marketplace.',
     data: {
       user: result.user,
@@ -119,10 +119,17 @@ export const verifyResetOtp = asyncHandler(async (req: Request, res: Response) =
   const { otp } = req.validated?.body || req.body;
   const result = await authService.verifyResetOtp(email, otp);
 
+  res.cookie('signupToken', result.resetToken, {
+    httpOnly: true,
+    secure: process.env.NODE_ENV === 'production',
+    sameSite: 'lax',
+    maxAge: 15 * 60 * 1000,
+  });
+
   return successResponse(res, {
     statusCode: 200,
     message: result.message,
-    data: null,
+    data: { token: result.resetToken },
   });
 });
 

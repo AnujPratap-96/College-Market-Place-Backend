@@ -105,23 +105,24 @@ export class WalletRepository {
     startOfMonth.setDate(1);
     startOfMonth.setHours(0, 0, 0, 0);
 
-    const credits = await prisma.walletLedger.aggregate({
-      _sum: { amount: true },
-      where: {
-        walletId,
-        type: { in: ['CREDIT', 'REFUND'] },
-        createdAt: { gte: startOfMonth },
-      },
-    });
-
-    const debits = await prisma.walletLedger.aggregate({
-      _sum: { amount: true },
-      where: {
-        walletId,
-        type: { in: ['DEBIT', 'HOLD'] },
-        createdAt: { gte: startOfMonth },
-      },
-    });
+    const [credits, debits] = await Promise.all([
+      prisma.walletLedger.aggregate({
+        _sum: { amount: true },
+        where: {
+          walletId,
+          type: { in: ['CREDIT', 'REFUND'] },
+          createdAt: { gte: startOfMonth },
+        },
+      }),
+      prisma.walletLedger.aggregate({
+        _sum: { amount: true },
+        where: {
+          walletId,
+          type: { in: ['DEBIT', 'HOLD'] },
+          createdAt: { gte: startOfMonth },
+        },
+      }),
+    ]);
 
     return {
       addedThisMonth: credits._sum.amount || 0.0,

@@ -7,6 +7,30 @@ import { emitToUser } from '../../lib/socket';
 import { getPlatformCommissionRate } from '../admin/settings.service';
 import { domainEvents } from '../../lib/events';
 
+const otpAttemptTracker = new Map<string, { attempts: number; lockedUntil: number }>();
+
+function checkAndRecordOtpAttempt(key: string, isMatch: boolean, label: string) {
+  const current = otpAttemptTracker.get(key);
+  const now = Date.now();
+
+  if (current && current.lockedUntil > now) {
+    const remainingMinutes = Math.ceil((current.lockedUntil - now) / (60 * 1000));
+    throw new ApiError(429, `Too many incorrect OTP attempts. ${label} verification is locked for ${remainingMinutes} minute(s).`);
+  }
+
+  if (!isMatch) {
+    const attempts = (current?.attempts || 0) + 1;
+    if (attempts >= 5) {
+      otpAttemptTracker.set(key, { attempts: 0, lockedUntil: now + 15 * 60 * 1000 });
+      throw new ApiError(429, `Too many incorrect OTP attempts. ${label} verification locked for 15 minutes.`);
+    }
+    otpAttemptTracker.set(key, { attempts, lockedUntil: 0 });
+    throw new ApiError(400, `Invalid ${label.toLowerCase()} OTP. (${5 - attempts} attempt(s) remaining)`);
+  }
+
+  otpAttemptTracker.delete(key);
+}
+
 export class OrderService {
   constructor(private repo: OrderRepository = orderRepository) {}
 
@@ -98,9 +122,7 @@ export class OrderService {
       throw new ApiError(400, `Cannot verify handover for an order in '${order.status}' status.`);
     }
 
-    if (order.pickupOtp !== pickupOtp) {
-      throw new ApiError(400, 'Invalid delivery verification OTP.');
-    }
+    checkAndRecordOtpAttempt(`handover_${order.id}`, order.pickupOtp === pickupOtp, 'Delivery pickup');
 
     return prisma.$transaction(
       async (tx) => {
@@ -180,9 +202,7 @@ export class OrderService {
       throw new ApiError(400, `Cannot verify return for order in '${order.status}' status.`);
     }
 
-    if (order.returnOtp !== returnOtp) {
-      throw new ApiError(400, 'Invalid return verification OTP.');
-    }
+    checkAndRecordOtpAttempt(`return_${order.id}`, order.returnOtp === returnOtp, 'Rental return');
 
     return prisma.$transaction(
       async (tx) => {
@@ -301,6 +321,13 @@ export class OrderService {
 
     if (order.status === OrderStatus.RENTAL_ACTIVE) {
       throw new ApiError(400, 'Cannot cancel an active rental in progress. Please use the return flow.');
+    }
+
+    if (order.orderType === OrderType.AUCTION && order.buyerId === userId) {
+      throw new ApiError(
+        400,
+        'Auction orders cannot be cancelled by the buyer. If the seller does not fulfill the handover, please raise a dispute.'
+      );
     }
 
     return prisma.$transaction(

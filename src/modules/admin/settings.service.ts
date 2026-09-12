@@ -8,15 +8,28 @@ export const DEFAULT_SETTINGS: Record<string, string> = {
 };
 
 export class SettingsService {
+  private cache = new Map<string, { value: string; expiry: number }>();
+  private readonly TTL_MS = 60 * 1000;
+
   async getSetting(key: string, defaultValue = ''): Promise<string> {
+    const cached = this.cache.get(key);
+    if (cached && cached.expiry > Date.now()) {
+      return cached.value;
+    }
+
     try {
       const setting = await prisma.systemSetting.findUnique({
         where: { key },
       });
-      if (setting && setting.value !== undefined) {
-        return setting.value;
-      }
-      return DEFAULT_SETTINGS[key] !== undefined ? DEFAULT_SETTINGS[key] : defaultValue;
+      const resolved =
+        setting && setting.value !== undefined
+          ? setting.value
+          : DEFAULT_SETTINGS[key] !== undefined
+          ? DEFAULT_SETTINGS[key]
+          : defaultValue;
+
+      this.cache.set(key, { value: resolved, expiry: Date.now() + this.TTL_MS });
+      return resolved;
     } catch {
       return DEFAULT_SETTINGS[key] !== undefined ? DEFAULT_SETTINGS[key] : defaultValue;
     }
@@ -55,6 +68,7 @@ export class SettingsService {
   }
 
   async updateSettings(updates: Record<string, string>): Promise<Record<string, string>> {
+    this.cache.clear();
     for (const [key, value] of Object.entries(updates)) {
       await prisma.systemSetting.upsert({
         where: { key },
