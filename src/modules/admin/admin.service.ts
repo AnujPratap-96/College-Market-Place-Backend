@@ -308,7 +308,36 @@ export class AdminService {
 
   async getAssistantEmbeddingsStatus(userId: string) {
     await this.checkIsAdmin(userId);
-    return campusVectorService.getStats();
+    const stats = campusVectorService.getStats();
+
+    try {
+      const [dbRows, activeRows] = await Promise.all([
+        prisma.$queryRawUnsafe<Array<{ count: number; max_updated_at: Date | null }>>(
+          'SELECT COUNT(*)::int AS count, MAX(updated_at) AS max_updated_at FROM product_embeddings'
+        ),
+        prisma.$queryRawUnsafe<Array<{ active_with_embedding: number }>>(
+          `SELECT COUNT(*)::int AS active_with_embedding
+           FROM product_embeddings pe
+           JOIN "Product" p ON p.id = pe.product_id
+           WHERE p.status IN ('AVAILABLE', 'RENTED')`
+        ),
+      ]);
+
+      return {
+        ...stats,
+        dbIndexedCount: dbRows[0]?.count ?? 0,
+        dbActiveIndexedCount: activeRows[0]?.active_with_embedding ?? 0,
+        dbLastUpdatedAt: dbRows[0]?.max_updated_at?.toISOString() ?? null,
+      };
+    } catch {
+      return {
+        ...stats,
+        dbIndexedCount: 0,
+        dbActiveIndexedCount: 0,
+        dbLastUpdatedAt: null,
+        dbStatusError: 'Unable to read product_embeddings table',
+      };
+    }
   }
 
   async getPendingAuctions(userId: string) {

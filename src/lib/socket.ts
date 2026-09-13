@@ -52,9 +52,6 @@ export const initSocket = (httpServer: HttpServer): SocketIOServer => {
           data.productId
         );
 
-        // Emit to recipient's private room
-        io?.to(`user_${data.toUserId}`).emit('receive_message', savedMessage);
-
         if (typeof callback === 'function') {
           callback({ success: true, message: savedMessage });
         }

@@ -24,9 +24,7 @@ export class WalletService {
   }
 
   async topup(userId: string, amount: number) {
-    if (process.env.NODE_ENV === 'production') {
-      throw new ApiError(403, 'Direct wallet top-up is disabled in production. Please use the payment gateway.');
-    }
+    throw new ApiError(403, 'Direct wallet top-up is disabled. Complete a Razorpay payment to add funds.');
 
     if (amount <= 0) {
       throw new ApiError(400, 'Top-up amount must be greater than zero.');
@@ -749,8 +747,12 @@ export class WalletService {
       throw new ApiError(400, 'Amount must be greater than zero.');
     }
     await this.repo.getOrCreateWallet(userId);
-    const keyId = process.env.RAZORPAY_KEY_ID || 'rzp_test_campus_sandbox';
+    const keyId = process.env.RAZORPAY_KEY_ID;
     const client = this.getRazorpayClient();
+
+    if (!client || !keyId) {
+      throw new ApiError(503, 'Razorpay is not configured. Wallet top-up is unavailable.');
+    }
 
     if (client) {
       try {
@@ -758,6 +760,10 @@ export class WalletService {
           amount: Math.round(amount * 100),
           currency: 'INR',
           receipt: `rcpt_${Date.now()}`,
+          notes: { userId, purpose: 'WALLET_TOPUP' },
+        });
+        await prisma.walletTopupPayment.create({
+          data: { orderId: order.id, userId, amountPaise: Number(order.amount) },
         });
         return {
           orderId: order.id,
@@ -770,13 +776,7 @@ export class WalletService {
       }
     }
 
-    const orderId = `order_test_${Date.now()}_${Math.floor(1000 + Math.random() * 9000)}`;
-    return {
-      orderId,
-      amount: Math.round(amount * 100),
-      currency: 'INR',
-      keyId,
-    };
+    throw new ApiError(503, 'Razorpay payment order could not be created.');
   }
 
   async verifyPayment(
@@ -785,7 +785,9 @@ export class WalletService {
     razorpayPaymentId: string,
     razorpaySignature: string | undefined,
     amount: number
-  ) {
+  ): Promise<{ wallet: any; ledger: any }> {
+    throw new ApiError(410, 'Client payment verification is disabled. Wallet credit is performed by the Razorpay webhook.');
+    /*
     if (amount <= 0) {
       throw new ApiError(400, 'Invalid payment amount.');
     }
@@ -842,7 +844,55 @@ export class WalletService {
         };
       },
       { maxWait: 15000, timeout: 30000 }
-    );
+    );*/
+  }
+
+  async handleRazorpayWebhook(rawBody: Buffer, signature: string | undefined, event: any) {
+    const secret = process.env.RAZORPAY_WEBHOOK_SECRET;
+    if (!secret) throw new ApiError(500, 'Razorpay webhook secret is not configured.');
+    if (!signature) throw new ApiError(400, 'Missing Razorpay webhook signature.');
+    const expected = crypto.createHmac('sha256', secret).update(rawBody).digest('hex');
+    if (expected.length !== signature.length || !crypto.timingSafeEqual(Buffer.from(expected), Buffer.from(signature))) {
+      throw new ApiError(401, 'Invalid Razorpay webhook signature.');
+    }
+    if (event?.event !== 'payment.captured') return { handled: false };
+
+    const payment = event?.payload?.payment?.entity;
+    const orderId = payment?.order_id;
+    const paymentId = payment?.id;
+    const amountPaise = Number(payment?.amount);
+    if (!orderId || !paymentId || !Number.isInteger(amountPaise) || amountPaise <= 0) {
+      throw new ApiError(400, 'Invalid Razorpay payment payload.');
+    }
+
+    return prisma.$transaction(async (tx) => {
+      const topup = await tx.walletTopupPayment.findUnique({ where: { orderId } });
+      if (!topup) throw new ApiError(404, 'Wallet payment order not found.');
+      if (topup.status === 'PAID') return { handled: true, duplicate: true };
+      if (topup.amountPaise !== amountPaise) throw new ApiError(400, 'Payment amount does not match the wallet order.');
+
+      const wallet = await this.repo.getOrCreateWallet(topup.userId, tx);
+      const balanceBefore = wallet.balance;
+      const amount = amountPaise / 100;
+      const updatedWallet = await this.repo.updateBalances(wallet.id, balanceBefore + amount, wallet.escrowBalance, tx);
+      const ledger = await this.repo.createLedgerEntry({
+        walletId: wallet.id,
+        amount,
+        type: LedgerType.CREDIT,
+        balanceBefore,
+        balanceAfter: balanceBefore + amount,
+        escrowBefore: wallet.escrowBalance,
+        escrowAfter: wallet.escrowBalance,
+        referenceType: 'PAYMENT_GATEWAY',
+        referenceId: paymentId,
+        description: `Recharge via Razorpay (${paymentId})`,
+      }, tx);
+      await tx.walletTopupPayment.update({
+        where: { orderId },
+        data: { paymentId, status: 'PAID', creditedAt: new Date() },
+      });
+      return { handled: true, duplicate: false, wallet: updatedWallet, ledger };
+    }, { maxWait: 15000, timeout: 30000 });
   }
 }
 

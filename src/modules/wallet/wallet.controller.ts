@@ -105,3 +105,13 @@ export const verifyPayment = asyncHandler(async (req: Request, res: Response) =>
     data: result,
   });
 });
+
+export const razorpayWebhook = asyncHandler(async (req: Request, res: Response) => {
+  const rawBody = (req as Request & { rawBody?: Buffer }).rawBody;
+  const signature = req.header('x-razorpay-signature');
+  if (!rawBody) {
+    return res.status(400).json({ success: false, message: 'Raw webhook body is required.' });
+  }
+  await walletService.handleRazorpayWebhook(rawBody, signature, req.body);
+  return res.status(200).json({ success: true });
+});

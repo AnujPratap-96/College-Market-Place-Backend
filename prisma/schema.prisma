@@ -32,6 +32,7 @@ model User {
   subscriptionsSubscribed Subscription[] @relation("UserSubscriptions")
   subscriptionsProvided   Subscription[] @relation("ProviderSubscriptions")
   wallet           Wallet?
+  walletTopups     WalletTopupPayment[]
   auctionsSold     Auction[]       @relation("SellerAuctions")
   auctionsWinning  Auction[]       @relation("CurrentBidderAuctions")
   bids             Bid[]           @relation("UserBids")
@@ -485,4 +486,25 @@ model ProductEmbedding {
   updatedAt DateTime @default(now()) @updatedAt @map("updated_at")
 
   @@map("product_embeddings")
+}
+
+enum WalletTopupStatus {
+  CREATED
+  PAID
+  FAILED
+}
+
+model WalletTopupPayment {
+  id          String            @id @default(cuid())
+  orderId     String            @unique
+  paymentId   String?           @unique
+  userId      String
+  user        User              @relation(fields: [userId], references: [id], onDelete: Cascade)
+  amountPaise Int
+  status      WalletTopupStatus @default(CREATED)
+  creditedAt  DateTime?
+  createdAt   DateTime          @default(now())
+  updatedAt   DateTime          @updatedAt
+
+  @@index([userId, status])
 }

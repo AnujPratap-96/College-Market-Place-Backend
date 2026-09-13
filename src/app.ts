@@ -76,7 +76,11 @@ export const authRateLimiter = rateLimit({
 app.use(globalRateLimiter);
 
 // 5. Body Parsers & Cookies
-app.use(express.json());
+app.use(express.json({
+  verify: (req, _res, buffer) => {
+    (req as Request & { rawBody?: Buffer }).rawBody = Buffer.from(buffer);
+  },
+}));
 app.use(express.urlencoded({ extended: true }));
 app.use(cookieParser());
 

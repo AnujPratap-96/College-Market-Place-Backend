@@ -91,6 +91,7 @@ export class MessageService {
                 title: true,
                 price: true,
                 imageUrl: true,
+                type: true,
               },
             },
           },
@@ -105,7 +106,13 @@ export class MessageService {
           },
         });
 
-        return { user, lastMessage, unreadCount };
+        return {
+          otherUser: user,
+          lastMessage: lastMessage
+            ? { ...lastMessage, senderId: lastMessage.from, receiverId: lastMessage.toUserId }
+            : lastMessage,
+          unreadCount,
+        };
       })
     );
   }

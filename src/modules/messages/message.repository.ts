@@ -1,9 +1,18 @@
 import prisma from '../../lib/prisma';
 import { Message } from '@prisma/client';
 
+const normalizeMessage = (message: any) => ({
+  ...message,
+  senderId: message.senderId || message.from,
+  receiverId: message.receiverId || message.toUserId,
+  product: message.product
+    ? { ...message.product, type: message.product.type || 'SELL' }
+    : message.product,
+});
+
 export class MessageRepository {
   async findReceivedByUser(userId: string): Promise<any[]> {
-    return prisma.message.findMany({
+    const messages = await prisma.message.findMany({
       where: { toUserId: userId },
       include: {
         product: {
@@ -17,10 +26,11 @@ export class MessageRepository {
       },
       orderBy: { createdAt: 'desc' },
     });
+    return messages.map(normalizeMessage);
   }
 
   async create(toUserId: string, from: string, content: string, productId?: string): Promise<any> {
-    return prisma.message.create({
+    const message = await prisma.message.create({
       data: {
         toUserId,
         from,
@@ -34,10 +44,12 @@ export class MessageRepository {
             title: true,
             price: true,
             imageUrl: true,
+            type: true,
           },
         },
       },
     });
+    return normalizeMessage(message);
   }
 
   async findConversation(userId: string, otherUserId: string, productId?: string): Promise<any[]> {
@@ -52,7 +64,7 @@ export class MessageRepository {
       where.productId = productId;
     }
 
-    return prisma.message.findMany({
+    const messages = await prisma.message.findMany({
       where,
       include: {
         product: {
@@ -61,11 +73,13 @@ export class MessageRepository {
             title: true,
             price: true,
             imageUrl: true,
+            type: true,
           },
         },
       },
       orderBy: { createdAt: 'asc' },
     });
+    return messages.map(normalizeMessage);
   }
 
   async markAsRead(toUserId: string, fromUserId: string) {
