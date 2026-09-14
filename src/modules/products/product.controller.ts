@@ -102,3 +102,13 @@ export const reportProduct = asyncHandler(async (req: Request, res: Response) =>
     data: { report },
   });
 });
+
+export const estimateProductListing = asyncHandler(async (req: Request, res: Response) => {
+  const { imageUrl, textHint } = req.body;
+  const estimate = await productService.aiEstimateListing(imageUrl, textHint);
+  return successResponse(res, {
+    statusCode: 200,
+    message: 'AI listing estimation generated successfully',
+    data: estimate,
+  });
+});

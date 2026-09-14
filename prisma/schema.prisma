@@ -40,6 +40,9 @@ model User {
   reviewsReceived  Review[]        @relation("ReviewsReceived")
   wantedRequests   WantedRequest[] @relation("UserWantedRequests")
   wantedOffers     WantedOffer[]   @relation("UserWantedOffers")
+  negotiationsMade NegotiationOffer[] @relation("BuyerNegotiations")
+  negotiationsReceived NegotiationOffer[] @relation("SellerNegotiations")
+  withdrawals      WithdrawalRequest[]
 }
 
 model Product {
@@ -50,6 +53,9 @@ model Product {
   type        ProductType
   category    String
   imageUrl        String?
+  images          String[]               @default([])
+  securityDeposit Float?
+  rentalDuration  String?
   status          ProductStatus          @default(AVAILABLE)
   isFlagged       Boolean                @default(false)
   frequency       SubscriptionFrequency?
@@ -66,6 +72,7 @@ model Product {
   auction         Auction?
   reviews         Review[]
   embedding       ProductEmbedding?
+  negotiations    NegotiationOffer[]
 
   @@index([status, isFlagged, createdAt])
   @@index([category, status])
@@ -115,15 +122,19 @@ model OTP {
 }
 
 model Message {
-  id        String   @id @default(cuid())
-  toUserId  String
-  from      String
-  content   String
-  productId String?
-  isRead    Boolean  @default(false)
-  createdAt DateTime @default(now())
-  toUser    User     @relation("MessagesToUser", fields: [toUserId], references: [id])
-  product   Product? @relation(fields: [productId], references: [id], onDelete: SetNull)
+  id            String            @id @default(cuid())
+  toUserId      String
+  from          String
+  content       String
+  productId     String?
+  mediaType     MessageMediaType  @default(TEXT)
+  mediaUrl      String?
+  audioDuration Int?
+  isRead        Boolean           @default(false)
+  createdAt     DateTime          @default(now())
+  toUser        User              @relation("MessagesToUser", fields: [toUserId], references: [id])
+  product       Product?          @relation(fields: [productId], references: [id], onDelete: SetNull)
+  offer         NegotiationOffer?
 
   @@index([toUserId, isRead])
   @@index([toUserId, from, createdAt])
@@ -202,6 +213,7 @@ model Order {
   auction           Auction?           @relation("AuctionOrder")
   reviews           Review[]
   wantedOffer       WantedOffer?       @relation("WantedOfferOrder")
+  negotiationOffer  NegotiationOffer?  @relation("NegotiationOrder")
   createdAt         DateTime           @default(now())
   updatedAt         DateTime           @updatedAt
 
@@ -505,6 +517,66 @@ model WalletTopupPayment {
   creditedAt  DateTime?
   createdAt   DateTime          @default(now())
   updatedAt   DateTime          @updatedAt
+
+  @@index([userId, status])
+}
+
+enum MessageMediaType {
+  TEXT
+  IMAGE
+  AUDIO
+}
+
+enum NegotiationStatus {
+  PENDING
+  ACCEPTED
+  COUNTERED
+  DECLINED
+  EXPIRED
+}
+
+model NegotiationOffer {
+  id            String            @id @default(cuid())
+  productId     String
+  product       Product           @relation(fields: [productId], references: [id], onDelete: Cascade)
+  buyerId       String
+  buyer         User              @relation("BuyerNegotiations", fields: [buyerId], references: [id], onDelete: Cascade)
+  sellerId      String
+  seller        User              @relation("SellerNegotiations", fields: [sellerId], references: [id], onDelete: Cascade)
+  originalPrice Float
+  offeredPrice  Float
+  status        NegotiationStatus @default(PENDING)
+  offeredById   String
+  messageId     String?      @unique
+  message       Message?     @relation(fields: [messageId], references: [id], onDelete: SetNull)
+  orderId       String?      @unique
+  order         Order?       @relation("NegotiationOrder", fields: [orderId], references: [id], onDelete: SetNull)
+  createdAt     DateTime     @default(now())
+  updatedAt     DateTime     @updatedAt
+
+  @@index([productId, status])
+  @@index([buyerId, sellerId])
+}
+
+enum PayoutStatus {
+  REQUESTED
+  PROCESSING
+  SUCCESS
+  FAILED
+}
+
+model WithdrawalRequest {
+  id               String       @id @default(cuid())
+  userId           String
+  user             User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  amount           Float
+  upiId            String
+  status           PayoutStatus @default(REQUESTED)
+  razorpayPayoutId String?      @unique
+  utr              String?
+  failureReason    String?
+  createdAt        DateTime     @default(now())
+  processedAt      DateTime?
 
   @@index([userId, status])
 }

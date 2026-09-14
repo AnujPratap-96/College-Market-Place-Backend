@@ -6,8 +6,9 @@ import { successResponse } from '../../utils/response';
 export const chatWithAssistant = asyncHandler(async (req: Request, res: Response) => {
   const userId = req.userId!;
   const messages = req.body.messages || [];
+  const category = req.body.category;
 
-  const response = await assistantService.handleChat(userId, messages);
+  const response = await assistantService.handleChat(userId, messages, category);
 
   return successResponse(res, {
     statusCode: 200,

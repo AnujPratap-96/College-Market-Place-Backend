@@ -10,9 +10,18 @@ export class MessageService {
     return this.repo.findReceivedByUser(userId);
   }
 
-  async sendMessage(fromUserId: string, toUserId: string, content: string, productId?: string) {
-    if (!toUserId || !content) {
-      throw new ApiError(400, 'toUserId and content are required.');
+  async sendMessage(
+    fromUserId: string,
+    toUserId: string,
+    content: string,
+    productId?: string,
+    mediaType: 'TEXT' | 'IMAGE' | 'AUDIO' = 'TEXT',
+    mediaUrl?: string,
+    audioDuration?: number
+  ) {
+    const finalContent = content?.trim() || (mediaType === 'IMAGE' ? 'Sent a photo' : mediaType === 'AUDIO' ? 'Voice note' : '');
+    if (!toUserId || (!finalContent && !mediaUrl)) {
+      throw new ApiError(400, 'toUserId and content or media are required.');
     }
 
     if (fromUserId === toUserId) {
@@ -31,14 +40,19 @@ export class MessageService {
       }
     }
 
-    const message = await this.repo.create(toUserId, fromUserId, content, productId);
+    const message = await this.repo.create(
+      toUserId,
+      fromUserId,
+      finalContent,
+      productId,
+      mediaType,
+      mediaUrl,
+      audioDuration
+    );
 
-    // Real-time Socket Notification
     try {
       emitToUser(toUserId, 'receive_message', message);
-    } catch {
-      // Socket emission optional if socket not connected
-    }
+    } catch {}
 
     return message;
   }
@@ -125,9 +139,7 @@ export class MessageService {
 
     try {
       emitToUser(fromUserId, 'messages_read', { readBy: userId });
-    } catch {
-      // Socket emission optional
-    }
+    } catch {}
 
     return result;
   }

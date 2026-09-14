@@ -4,8 +4,11 @@ import { requestSchema } from '../../schemas/request.schema';
 export const sendMessageSchema = requestSchema({
   body: z.object({
     toUserId: z.string().min(1, 'Recipient user ID is required'),
-    content: z.string().trim().min(1, 'Message content cannot be empty'),
+    content: z.string().trim().optional(),
     productId: z.string().optional(),
+    mediaType: z.enum(['TEXT', 'IMAGE', 'AUDIO']).optional(),
+    mediaUrl: z.string().optional(),
+    audioDuration: z.number().optional(),
   }),
 });
 

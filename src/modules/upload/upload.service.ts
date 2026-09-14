@@ -110,6 +110,72 @@ export class UploadService {
       provider: 'LOCAL',
     };
   }
+
+  async saveChatMedia(
+    userId: string,
+    file: { originalname: string; mimetype: string; buffer: Buffer; size: number }
+  ) {
+    if (!file || !file.buffer) {
+      throw new ApiError(400, 'No media file provided.');
+    }
+
+    const mime = file.mimetype.toLowerCase();
+    if (mime.startsWith('video/')) {
+      throw new ApiError(400, 'Video uploads are not allowed. Only photos and voice notes are supported.');
+    }
+
+    const isImage = mime.startsWith('image/');
+    const isAudio = mime.startsWith('audio/');
+
+    if (!isImage && !isAudio) {
+      throw new ApiError(400, 'Only images and audio voice notes are allowed.');
+    }
+
+    if (isImage && file.size > 10 * 1024 * 1024) {
+      throw new ApiError(400, 'Image size exceeds maximum limit of 10MB.');
+    }
+
+    if (isAudio && file.size > 25 * 1024 * 1024) {
+      throw new ApiError(400, 'Audio size exceeds maximum limit of 25MB.');
+    }
+
+    const folder = isImage ? 'chat-images' : 'chat-audio';
+    const ext = file.originalname.split('.').pop()?.toLowerCase() || (isImage ? 'jpg' : 'webm');
+    const storagePath = `${folder}/${userId}/${Date.now()}-${Math.random().toString(36).substring(2, 8)}.${ext}`;
+    const bucket = getSupabaseBucket();
+    const supabase = getSupabaseAdmin();
+
+    if (supabase) {
+      const { error } = await supabase.storage
+        .from(bucket)
+        .upload(storagePath, file.buffer, {
+          contentType: file.mimetype,
+          upsert: true,
+        });
+
+      if (error) {
+        throw new ApiError(502, `Storage upload failed: ${error.message}`);
+      }
+
+      const { data: publicData } = supabase.storage.from(bucket).getPublicUrl(storagePath);
+      return {
+        mediaUrl: publicData.publicUrl,
+        mediaType: isImage ? 'IMAGE' : 'AUDIO',
+        path: storagePath,
+      };
+    }
+
+    const uploadsDir = path.resolve(process.cwd(), 'public', 'uploads', folder, userId);
+    await fs.promises.mkdir(uploadsDir, { recursive: true });
+    const localFilePath = path.join(uploadsDir, path.basename(storagePath));
+    await fs.promises.writeFile(localFilePath, file.buffer);
+
+    return {
+      mediaUrl: `/uploads/${folder}/${userId}/${path.basename(storagePath)}`,
+      mediaType: isImage ? 'IMAGE' : 'AUDIO',
+      path: storagePath,
+    };
+  }
 }
 
 export const uploadService = new UploadService();

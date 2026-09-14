@@ -716,6 +716,16 @@ export class WalletService {
           tx
         );
 
+        const withdrawalRecord = await tx.withdrawalRequest.create({
+          data: {
+            userId,
+            amount,
+            upiId,
+            status: 'SUCCESS',
+            utr: `UTR${Date.now()}${Math.floor(1000 + Math.random() * 9000)}`,
+          },
+        });
+
         return {
           withdrawalId: withdrawalRef,
           amount,
@@ -724,10 +734,18 @@ export class WalletService {
           mode: gatewayMode,
           wallet: updatedWallet,
           ledger,
+          withdrawal: withdrawalRecord,
         };
       },
       { maxWait: 15000, timeout: 30000 }
     );
+  }
+
+  async getWithdrawals(userId: string) {
+    return prisma.withdrawalRequest.findMany({
+      where: { userId },
+      orderBy: { createdAt: 'desc' },
+    });
   }
 
   private getRazorpayClient(): Razorpay | null {

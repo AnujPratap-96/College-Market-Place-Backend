@@ -1,10 +1,13 @@
 import prisma from '../../lib/prisma';
-import { Message } from '@prisma/client';
+import { Message, MessageMediaType } from '@prisma/client';
 
 const normalizeMessage = (message: any) => ({
   ...message,
   senderId: message.senderId || message.from,
   receiverId: message.receiverId || message.toUserId,
+  mediaType: message.mediaType || 'TEXT',
+  mediaUrl: message.mediaUrl || null,
+  audioDuration: message.audioDuration || null,
   product: message.product
     ? { ...message.product, type: message.product.type || 'SELL' }
     : message.product,
@@ -29,13 +32,24 @@ export class MessageRepository {
     return messages.map(normalizeMessage);
   }
 
-  async create(toUserId: string, from: string, content: string, productId?: string): Promise<any> {
+  async create(
+    toUserId: string,
+    from: string,
+    content: string,
+    productId?: string,
+    mediaType: MessageMediaType = 'TEXT',
+    mediaUrl?: string,
+    audioDuration?: number
+  ): Promise<any> {
     const message = await prisma.message.create({
       data: {
         toUserId,
         from,
         content,
         productId: productId || null,
+        mediaType,
+        mediaUrl: mediaUrl || null,
+        audioDuration: audioDuration ? Number(audioDuration) : null,
       },
       include: {
         product: {
@@ -45,6 +59,18 @@ export class MessageRepository {
             price: true,
             imageUrl: true,
             type: true,
+          },
+        },
+        offer: {
+          include: {
+            product: {
+              select: {
+                id: true,
+                title: true,
+                price: true,
+                imageUrl: true,
+              },
+            },
           },
         },
       },
@@ -74,6 +100,18 @@ export class MessageRepository {
             price: true,
             imageUrl: true,
             type: true,
+          },
+        },
+        offer: {
+          include: {
+            product: {
+              select: {
+                id: true,
+                title: true,
+                price: true,
+                imageUrl: true,
+              },
+            },
           },
         },
       },

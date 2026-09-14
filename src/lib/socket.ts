@@ -42,14 +42,16 @@ export const initSocket = (httpServer: HttpServer): SocketIOServer => {
     const userRoom = `user_${userId}`;
     socket.join(userRoom);
 
-    // 1. Send Message event
-    socket.on('send_message', async (data: { toUserId: string; content: string; productId?: string }, callback) => {
+    socket.on('send_message', async (data: { toUserId: string; content: string; productId?: string; mediaType?: 'TEXT' | 'IMAGE' | 'AUDIO'; mediaUrl?: string; audioDuration?: number }, callback) => {
       try {
         const savedMessage = await messageService.sendMessage(
           userId,
           data.toUserId,
           data.content,
-          data.productId
+          data.productId,
+          data.mediaType,
+          data.mediaUrl,
+          data.audioDuration
         );
 
         if (typeof callback === 'function') {

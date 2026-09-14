@@ -78,6 +78,16 @@ export const withdraw = asyncHandler(async (req: Request, res: Response) => {
   });
 });
 
+export const getWithdrawals = asyncHandler(async (req: Request, res: Response) => {
+  const userId = req.userId!;
+  const withdrawals = await walletService.getWithdrawals(userId);
+  return successResponse(res, {
+    statusCode: 200,
+    message: 'Withdrawal history retrieved successfully',
+    data: { withdrawals },
+  });
+});
+
 export const createPaymentOrder = asyncHandler(async (req: Request, res: Response) => {
   const userId = req.userId!;
   const { amount } = req.validated?.body || req.body;

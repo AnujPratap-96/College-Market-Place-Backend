@@ -25,10 +25,14 @@ export interface AssistantResponse {
     id: string;
     orderNumber: string;
     status: string;
+    productId?: string;
     productTitle: string;
+    productImage?: string | null;
+    productCategory?: string;
     totalAmount: number;
     pickupOtp?: string | null;
     role: string;
+    counterparty?: string | null;
   }>;
   wallet?: {
     balance: number;
@@ -37,7 +41,7 @@ export interface AssistantResponse {
 }
 
 class AssistantService {
-  async handleChat(userId: string, messages: ChatMessage[]): Promise<AssistantResponse> {
+  async handleChat(userId: string, messages: ChatMessage[], category?: string): Promise<AssistantResponse> {
     const lastUserMessage = [...messages].reverse().find(m => m.role === 'user')?.content || '';
     const queryLower = lastUserMessage.toLowerCase();
 
@@ -55,6 +59,7 @@ class AssistantService {
       queryLower.includes('track') ||
       queryLower.includes('otp') ||
       queryLower.includes('my purchase') ||
+      queryLower.includes('my sale') ||
       queryLower.includes('handover code') ||
       /ord-[a-z0-9-]+/i.test(queryLower)
     ) {
@@ -110,7 +115,7 @@ class AssistantService {
 
     if (isGreeting && queryLower.length < 25) {
       return {
-        message: "Hey there! I am **CampusBuddy**, your campus marketplace assistant. How can I help you today? You can ask me to:\n- 🔍 Find textbooks, calculators, or bike rentals\n- 📦 Check your active orders and delivery OTPs\n- 💰 Check your wallet & escrow balances\n- 🛡️ Learn how campus escrow protection works",
+        message: "Hey there! I am **CampusBuddy**, your campus marketplace assistant. How can I help you today? You can ask me to:\n- 🔍 Find textbooks, calculators, or bike rentals\n- 📦 Check your purchase orders or selling orders & handover OTPs\n- 💰 Check your wallet & escrow balances\n- 🛡️ Learn how campus escrow protection works\n\n*Tip: You can also choose a category from the dropdown above to filter campus listings!*",
       };
     }
 
@@ -119,18 +124,20 @@ class AssistantService {
       'apron', 'cooler', 'buy', 'search', 'find', 'item', 'notes', 'exam', 'tiffin',
       'service', 'tutor', 'subscription', 'price', 'product', 'available', 'cost',
       'goggles', 'headphone', 'keyboard', 'clrs', 'casio', 'sprint', 'engineering',
-      'sell', 'listing', 'purchase', 'renting'
+      'sell', 'listing', 'purchase', 'renting', 'stationery', 'furniture', 'clothing',
+      'uniform', 'blazer', 'mattress', 'kettle', 'gadget', 'meal', 'food', 'show', 'all'
     ];
 
-    const isProductRelated = productKeywords.some(kw => queryLower.includes(kw));
+    const hasExplicitCategory = Boolean(category && category !== 'all');
+    const isProductRelated = hasExplicitCategory || productKeywords.some(kw => queryLower.includes(kw));
 
     if (isProductRelated) {
-      const searchResult = await this.handleProductSearch(queryLower);
+      const searchResult = await this.handleProductSearch(queryLower, category);
       if (searchResult.products && searchResult.products.length > 0) {
         return searchResult;
       }
       return {
-        message: "I searched the campus catalog but couldn't find any available listings matching that request right now. Try searching for other items like **textbooks**, **calculators**, **mountain bikes**, or **tiffin plans**.",
+        message: `I searched the campus catalog${hasExplicitCategory ? ` in **${category}**` : ''} but couldn't find any available listings matching that request right now. Try searching for other items like **textbooks**, **calculators**, **mountain bikes**, or **tiffin plans**.`,
       };
     }
 
@@ -157,47 +164,138 @@ class AssistantService {
   }
 
   private async handleOrdersQuery(userId: string, query: string): Promise<AssistantResponse> {
-    const orders = await prisma.order.findMany({
-      where: {
+    const isSellQuery =
+      query.includes('sell') ||
+      query.includes('sold') ||
+      query.includes('sale') ||
+      query.includes('seller') ||
+      query.includes('fulfill') ||
+      query.includes('my listings sold');
+
+    const isBuyQuery =
+      query.includes('buy') ||
+      query.includes('purchase') ||
+      query.includes('bought') ||
+      query.includes('booked') ||
+      query.includes('booking');
+
+    let whereClause: any = {};
+    let mode: 'SELL' | 'BUY' | 'ALL' = 'ALL';
+
+    if (isSellQuery && !isBuyQuery) {
+      whereClause = { sellerId: userId };
+      mode = 'SELL';
+    } else if (isBuyQuery && !isSellQuery) {
+      whereClause = { buyerId: userId };
+      mode = 'BUY';
+    } else if (
+      query.includes('my order') ||
+      query.includes('my orders') ||
+      query.includes('track') ||
+      query.includes('otp') ||
+      query.includes('my purchase')
+    ) {
+      whereClause = { buyerId: userId };
+      mode = 'BUY';
+    } else {
+      whereClause = {
         OR: [{ buyerId: userId }, { sellerId: userId }],
-      },
+      };
+      mode = 'ALL';
+    }
+
+    const orders = await prisma.order.findMany({
+      where: whereClause,
       include: {
         product: {
           select: {
+            id: true,
             title: true,
+            imageUrl: true,
+            images: true,
+            category: true,
+            type: true,
+          },
+        },
+        buyer: {
+          select: {
+            name: true,
+            phone: true,
+          },
+        },
+        seller: {
+          select: {
+            name: true,
+            phone: true,
           },
         },
       },
       orderBy: { createdAt: 'desc' },
-      take: 5,
+      take: 6,
     });
 
     if (orders.length === 0) {
+      if (mode === 'SELL') {
+        return {
+          message: "You don't have any sales or selling orders yet. List items on campus to start earning!",
+        };
+      }
       return {
-        message: "You don't have any active or past orders yet. Browse our campus catalog to buy or rent items!",
+        message: "You don't have any purchase or booking orders yet. Browse our campus catalog to buy or rent items!",
       };
     }
 
     const formattedOrders = orders.map(o => {
       const isBuyer = o.buyerId === userId;
+      const productImg = o.product.imageUrl || (o.product.images && o.product.images.length > 0 ? o.product.images[0] : null);
       return {
         id: o.id,
         orderNumber: o.orderNumber,
         status: o.status,
+        productId: o.product.id,
         productTitle: o.product.title,
+        productImage: productImg,
+        productCategory: o.product.category,
         totalAmount: o.totalAmount,
         pickupOtp: isBuyer ? o.pickupOtp : null,
         role: isBuyer ? 'Buyer' : 'Seller',
+        counterparty: isBuyer ? o.seller?.name : o.buyer?.name,
       };
     });
 
-    let text = `Here are your recent campus orders:\n\n`;
-    for (const o of formattedOrders) {
-      text += `- **#${o.orderNumber}** (${o.productTitle})\n  Status: **${o.status}** • Total: **₹${o.totalAmount.toFixed(2)}**`;
-      if (o.pickupOtp && o.status === 'ESCROW_HELD') {
-        text += `\n  🔑 **Your Pickup OTP:** \`${o.pickupOtp}\` *(Share with seller only after inspecting the item)*`;
+    let text = '';
+    if (mode === 'SELL') {
+      text = `Here are your recent **sales & selling orders**:\n\n`;
+      for (const o of orders) {
+        text += `- **#${o.orderNumber}** (${o.product.title})\n  Status: **${o.status}** • Amount: **₹${o.totalAmount.toFixed(2)}** • Buyer: **${o.buyer?.name || 'Student'}**`;
+        if (o.status === 'ESCROW_HELD') {
+          text += `\n  📦 *Handover item to buyer and enter their 6-digit OTP to release payment to your wallet.*`;
+        } else if (o.status === 'RENTAL_ACTIVE') {
+          text += `\n  🚲 *Active rental. Enter buyer's Return OTP when item returned to release deposit.*`;
+        }
+        text += `\n`;
       }
-      text += `\n`;
+    } else if (mode === 'BUY') {
+      text = `Here are your recent **purchases & bookings**:\n\n`;
+      for (const o of orders) {
+        text += `- **#${o.orderNumber}** (${o.product.title})\n  Status: **${o.status}** • Total: **₹${o.totalAmount.toFixed(2)}** • Seller: **${o.seller?.name || 'Student'}**`;
+        if (o.pickupOtp && o.status === 'ESCROW_HELD') {
+          text += `\n  🔑 **Your Pickup OTP:** \`${o.pickupOtp}\` *(Share with seller only after inspecting the item)*`;
+        }
+        text += `\n`;
+      }
+    } else {
+      text = `Here are your recent **campus orders**:\n\n`;
+      for (const o of orders) {
+        const isBuyer = o.buyerId === userId;
+        const roleLabel = isBuyer ? 'Purchase' : 'Sale';
+        const partyLabel = isBuyer ? `Seller: ${o.seller?.name || 'Student'}` : `Buyer: ${o.buyer?.name || 'Student'}`;
+        text += `- **#${o.orderNumber}** [${roleLabel}] (${o.product.title})\n  Status: **${o.status}** • Total: **₹${o.totalAmount.toFixed(2)}** • ${partyLabel}`;
+        if (isBuyer && o.pickupOtp && o.status === 'ESCROW_HELD') {
+          text += `\n  🔑 **Your Pickup OTP:** \`${o.pickupOtp}\``;
+        }
+        text += `\n`;
+      }
     }
 
     return {
@@ -206,7 +304,7 @@ class AssistantService {
     };
   }
 
-  private async handleProductSearch(query: string): Promise<AssistantResponse> {
+  private async handleProductSearch(query: string, categoryParam?: string): Promise<AssistantResponse> {
     let typeFilter: ProductType | undefined = undefined;
     if (query.includes('rent') || query.includes('rental')) {
       typeFilter = ProductType.RENT;
@@ -216,19 +314,42 @@ class AssistantService {
       typeFilter = ProductType.SUBSCRIPTION;
     }
 
+    let detectedCategory = categoryParam && categoryParam !== 'all' ? categoryParam.toLowerCase() : undefined;
+    if (!detectedCategory) {
+      if (query.includes('book') || query.includes('textbook') || query.includes('notes')) detectedCategory = 'books';
+      else if (query.includes('stationery') || query.includes('drafter') || query.includes('calculator')) detectedCategory = 'stationery';
+      else if (query.includes('electronic') || query.includes('laptop') || query.includes('gadget') || query.includes('headphone') || query.includes('keyboard')) detectedCategory = 'electronics';
+      else if (query.includes('cycle') || query.includes('bike') || query.includes('bicycle')) detectedCategory = 'cycles';
+      else if (query.includes('cloth') || query.includes('uniform') || query.includes('blazer')) detectedCategory = 'clothing';
+      else if (query.includes('essential') || query.includes('cooler') || query.includes('mattress') || query.includes('kettle')) detectedCategory = 'essentials';
+      else if (query.includes('furniture') || query.includes('table') || query.includes('chair') || query.includes('desk')) detectedCategory = 'furniture';
+      else if (query.includes('food') || query.includes('meal') || query.includes('tiffin')) detectedCategory = 'food';
+      else if (query.includes('service') || query.includes('tutor') || query.includes('gig')) detectedCategory = 'services';
+    }
+
     const queryEmbedding = await campusVectorService.generateEmbedding(query);
-    const vectorMatches = await campusVectorService.searchSimilar(queryEmbedding, 6, 0.08);
+    const vectorMatches = await campusVectorService.searchSimilar(queryEmbedding, 8, 0.08);
 
     let matchedProducts = vectorMatches
       .map(item => item.product)
-      .filter(p => (typeFilter ? p.type === typeFilter : true));
+      .filter(p => (typeFilter ? p.type === typeFilter : true))
+      .filter(p => (detectedCategory ? p.category.toLowerCase().includes(detectedCategory) : true));
 
     if (matchedProducts.length === 0) {
       const cleanTokens = query
-        .replace(/find|search|show|me|have|you|any|the|a|for/gi, '')
+        .replace(/find|search|show|me|have|you|any|the|a|for|in|category|items|listings|available|please/gi, '')
         .trim()
         .split(/\s+/)
         .filter(t => t.length > 2);
+
+      const categoryWhere = detectedCategory
+        ? {
+            OR: [
+              { category: { equals: detectedCategory, mode: 'insensitive' as const } },
+              { category: { contains: detectedCategory, mode: 'insensitive' as const } },
+            ],
+          }
+        : {};
 
       const dbFallback = await prisma.product.findMany({
         where: {
@@ -236,13 +357,14 @@ class AssistantService {
             in: [ProductStatus.AVAILABLE, ProductStatus.RENTED],
           },
           ...(typeFilter ? { type: typeFilter } : {}),
+          ...categoryWhere,
           ...(cleanTokens.length > 0
             ? {
                 OR: cleanTokens.map(token => ({
                   OR: [
-                    { title: { contains: token, mode: 'insensitive' } },
-                    { description: { contains: token, mode: 'insensitive' } },
-                    { category: { contains: token, mode: 'insensitive' } },
+                    { title: { contains: token, mode: 'insensitive' as const } },
+                    { description: { contains: token, mode: 'insensitive' as const } },
+                    { category: { contains: token, mode: 'insensitive' as const } },
                   ],
                 })),
               }
@@ -256,8 +378,9 @@ class AssistantService {
           category: true,
           status: true,
           imageUrl: true,
+          images: true,
         },
-        take: 6,
+        take: 8,
       });
 
       matchedProducts = dbFallback.map(p => ({
@@ -267,24 +390,36 @@ class AssistantService {
         type: p.type,
         category: p.category,
         status: p.status,
-        imageUrl: p.imageUrl,
+        imageUrl: p.imageUrl || (p.images && p.images.length > 0 ? p.images[0] : null),
         description: '',
         embedding: [],
       }));
+    } else {
+      const pIds = matchedProducts.map(p => p.id);
+      const dbFresh = await prisma.product.findMany({
+        where: { id: { in: pIds } },
+        select: { id: true, imageUrl: true, images: true },
+      });
+      const imgLookup = new Map(dbFresh.map(df => [df.id, df.imageUrl || (df.images && df.images.length > 0 ? df.images[0] : null)]));
+      for (const mp of matchedProducts) {
+        if (!mp.imageUrl && imgLookup.has(mp.id)) {
+          mp.imageUrl = imgLookup.get(mp.id) || null;
+        }
+      }
     }
 
     if (matchedProducts.length === 0) {
       return {
-        message: "I couldn't find any campus items matching that search right now. Try searching for **textbooks**, **calculator**, **bike**, or **tiffin**.",
+        message: `I couldn't find any campus items matching that search${detectedCategory ? ` in **${detectedCategory}**` : ''} right now. Try searching for **textbooks**, **calculator**, **bike**, or **tiffin**.`,
       };
     }
 
-    let text = `Found **${matchedProducts.length} matching campus listings**:\n\n`;
+    let text = `Found **${matchedProducts.length} matching campus listings**${detectedCategory ? ` in **${detectedCategory}**` : ''}:\n\n`;
     for (const p of matchedProducts) {
       if (p.status === ProductStatus.RENTED) {
-        text += `- **${p.title}** (₹${p.price}) [${p.type}] — ⏳ *Currently Rented (Can be rented once returned)*\n`;
+        text += `- **${p.title}** (₹${p.price}) [${p.type} • ${p.category}] — ⏳ *Currently Rented (Can be rented once returned)*\n`;
       } else {
-        text += `- **${p.title}** (₹${p.price}) [${p.type}]\n`;
+        text += `- **${p.title}** (₹${p.price}) [${p.type} • ${p.category}]\n`;
       }
     }
 

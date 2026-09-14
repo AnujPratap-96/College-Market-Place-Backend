@@ -19,6 +19,8 @@ import auctionRoutes from './modules/auctions/auction.routes';
 import assistantRoutes from './modules/assistant/assistant.routes';
 import reviewRoutes from './modules/reviews/review.routes';
 import wantedRoutes from './modules/wanted/wanted.routes';
+import negotiationRoutes from './modules/negotiations/negotiation.routes';
+import analyticsRoutes from './modules/analytics/analytics.routes';
 import path from 'path';
 
 import requestLogger from './middlewares/requestLogger.middleware';
@@ -110,6 +112,8 @@ app.use('/api/auctions', auctionRoutes);
 app.use('/api/assistant', assistantRoutes);
 app.use('/api/reviews', reviewRoutes);
 app.use('/api/wanted', wantedRoutes);
+app.use('/api/negotiations', negotiationRoutes);
+app.use('/api/analytics', analyticsRoutes);
 app.use('/uploads', express.static(path.resolve(process.cwd(), 'public', 'uploads')));
 
 // 9. Error Handling

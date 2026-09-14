@@ -6,6 +6,7 @@ import {
   getHistory,
   getStats,
   withdraw,
+  getWithdrawals,
   createPaymentOrder,
   verifyPayment,
   razorpayWebhook,
@@ -27,11 +28,11 @@ router.get('/', requireAuth, getWallet);
 router.get('/stats', requireAuth, getStats);
 router.get('/history', requireAuth, validate(walletHistorySchema), getHistory);
 router.get('/ledger', requireAuth, validate(walletHistorySchema), getHistory);
+router.get('/withdrawals', requireAuth, getWithdrawals);
 router.post('/topup', requireAuth, validate(topupWalletSchema), topup);
 router.post('/transfer', requireAuth, validate(transferWalletSchema), transfer);
 router.post('/withdraw', requireAuth, validate(withdrawWalletSchema), withdraw);
 router.post('/create-order', requireAuth, validate(createPaymentOrderSchema), createPaymentOrder);
-// Kept as a hard-disabled compatibility endpoint; only the webhook can credit wallets.
 router.post('/verify-payment', requireAuth, validate(verifyPaymentSchema), verifyPayment);
 router.post('/webhook/razorpay', razorpayWebhook);
 
