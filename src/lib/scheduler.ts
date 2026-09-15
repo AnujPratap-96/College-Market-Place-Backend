@@ -1,3 +1,4 @@
+import { logger } from '../utils/logger';
 import prisma from './prisma';
 import { auctionService } from '../modules/auctions/auction.service';
 import { subscriptionService } from '../modules/subscriptions/subscription.service';
@@ -12,15 +13,15 @@ class BackgroundScheduler {
   start(intervalMs: number = 60000) {
     if (this.timer) return;
 
-    console.log(`⏱️  Background scheduler initialized (interval: ${intervalMs / 1000}s)`);
+    logger.info(`⏱️  Background scheduler initialized (interval: ${intervalMs / 1000}s)`);
 
     // Run first iteration shortly after boot
     setTimeout(() => {
-      this.runCycle().catch((err) => console.error('Scheduler initial cycle error:', err));
+      this.runCycle().catch((err) => logger.error('Scheduler initial cycle error:', err));
     }, 5000);
 
     this.timer = setInterval(() => {
-      this.runCycle().catch((err) => console.error('Scheduler cycle error:', err));
+      this.runCycle().catch((err) => logger.error('Scheduler cycle error:', err));
     }, intervalMs);
   }
 
@@ -45,7 +46,7 @@ class BackgroundScheduler {
       // 3. Monitor overdue rentals
       await this.checkOverdueRentals();
     } catch (error) {
-      console.error('Scheduler error during maintenance cycle:', error);
+      logger.error('Scheduler error during maintenance cycle:', error);
     } finally {
       this.isRunning = false;
     }
@@ -90,7 +91,7 @@ class BackgroundScheduler {
         });
       }
     } catch (err) {
-      console.error('Error checking overdue rentals:', err);
+      logger.error('Error checking overdue rentals:', err);
     }
   }
 }

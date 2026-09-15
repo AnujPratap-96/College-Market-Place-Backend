@@ -72,6 +72,15 @@ export class OrderService {
 
     const createdOrder = await prisma.$transaction(
       async (tx) => {
+        const lock = await tx.product.updateMany({
+          where: { id: productId, version: product.version, status: 'AVAILABLE' },
+          data: { status: ProductStatus.RESERVED, version: { increment: 1 } },
+        });
+
+        if (lock.count === 0) {
+          throw new ApiError(409, 'This product was just purchased or modified by someone else. Please try again.');
+        }
+
         const order = await this.repo.createOrder(
           {
             orderNumber,
@@ -91,8 +100,6 @@ export class OrderService {
           },
           tx
         );
-
-        await this.repo.updateProductStatus(productId, ProductStatus.RESERVED, tx);
 
         if (paymentMethod === 'WALLET') {
           await walletService.holdEscrow(buyerId, totalAmount, order.id, tx);

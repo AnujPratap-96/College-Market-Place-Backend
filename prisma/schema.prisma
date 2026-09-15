@@ -62,6 +62,8 @@ model Product {
   deliverySlots   String?
   serviceDuration String?
   createdAt       DateTime               @default(now())
+  updatedAt       DateTime               @default(now()) @updatedAt
+  version         Int                    @default(1)
   ownerId         String
   owner           User                   @relation("UserProducts", fields: [ownerId], references: [id])
   requests        Request[]

@@ -1,3 +1,4 @@
+import { logger } from './utils/logger';
 import http from 'http';
 import app from './app';
 import { env } from './config/env';
@@ -18,10 +19,10 @@ const startServer = async (): Promise<void> => {
     backgroundScheduler.start(60000); // Run periodic auto-settlement and monitoring every 60s
 
     server.listen(PORT, () => {
-      console.log(`🚀 Server running in ${env.NODE_ENV} mode on port ${PORT}`);
+      logger.info(`🚀 Server running in ${env.NODE_ENV} mode on port ${PORT}`);
     });
   } catch (error) {
-    console.error('❌ Failed to start server:', error);
+    logger.error('❌ Failed to start server:', error);
     process.exit(1);
   }
 };

@@ -1,3 +1,4 @@
+import { logger } from '../utils/logger';
 import prisma from '../lib/prisma';
 import { domainEvents, OrderCreatedEvent, AuctionSettledEvent, WalletTransferredEvent, DisputeResolvedEvent } from '../lib/events';
 import { emailQueue } from '../lib/email-queue';
@@ -41,7 +42,7 @@ export const registerEmailNotificationListeners = (): void => {
         emailQueue.enqueue({ to: order.seller.email, subject, html });
       }
     } catch (error) {
-      console.error('[EmailNotificationListener] Error processing order:created:', error);
+      logger.error('[EmailNotificationListener] Error processing order:created:', error);
     }
   });
 
@@ -78,7 +79,7 @@ export const registerEmailNotificationListeners = (): void => {
         emailQueue.enqueue({ to: auction.seller.email, subject, html });
       }
     } catch (error) {
-      console.error('[EmailNotificationListener] Error processing auction:settled:', error);
+      logger.error('[EmailNotificationListener] Error processing auction:settled:', error);
     }
   });
 
@@ -116,7 +117,7 @@ export const registerEmailNotificationListeners = (): void => {
         emailQueue.enqueue({ to: recipient.email, subject, html });
       }
     } catch (error) {
-      console.error('[EmailNotificationListener] Error processing wallet:transferred:', error);
+      logger.error('[EmailNotificationListener] Error processing wallet:transferred:', error);
     }
   });
 
@@ -153,7 +154,7 @@ export const registerEmailNotificationListeners = (): void => {
         emailQueue.enqueue({ to: order.seller.email, subject, html });
       }
     } catch (error) {
-      console.error('[EmailNotificationListener] Error processing dispute:resolved:', error);
+      logger.error('[EmailNotificationListener] Error processing dispute:resolved:', error);
     }
   });
 };

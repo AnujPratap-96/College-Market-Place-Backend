@@ -1,3 +1,4 @@
+import { logger } from '../utils/logger';
 import { Request, Response, NextFunction } from 'express';
 import { ZodError } from 'zod';
 import { Prisma } from '@prisma/client';
@@ -57,12 +58,12 @@ export default function errorMiddleware(
 
   // Server-side logging: Full details and stack trace preserved for developers
   if (error.statusCode >= 500) {
-    console.error(`[${req.id || 'REQ'}] [SYSTEM ERROR] ${req.method} ${req.originalUrl} - ${error.statusCode}:`, err);
+    logger.error(`[${req.id || 'REQ'}] [SYSTEM ERROR] ${req.method} ${req.originalUrl} - ${error.statusCode}:`, err);
     if (err?.stack) {
-      console.error(err.stack);
+      logger.error(err.stack);
     }
   } else {
-    console.warn(`[${req.id || 'REQ'}] [CLIENT ERROR] ${req.method} ${req.originalUrl} - ${error.statusCode}: ${error.message}`);
+    logger.warn(`[${req.id || 'REQ'}] [CLIENT ERROR] ${req.method} ${req.originalUrl} - ${error.statusCode}: ${error.message}`);
   }
 
   errorResponse(res, {

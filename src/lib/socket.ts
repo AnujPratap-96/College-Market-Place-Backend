@@ -1,3 +1,4 @@
+import { logger } from '../utils/logger';
 import { Server as HttpServer } from 'http';
 import { Server as SocketIOServer, Socket } from 'socket.io';
 import jwt from 'jsonwebtoken';
@@ -80,7 +81,7 @@ export const initSocket = (httpServer: HttpServer): SocketIOServer => {
           readBy: userId,
         });
       } catch (error) {
-        console.error('Socket mark_read error:', error);
+        logger.error('Socket mark_read error:', error);
       }
     });
 

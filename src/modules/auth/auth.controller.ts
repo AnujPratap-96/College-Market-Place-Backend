@@ -1,3 +1,4 @@
+import { env } from '../../config/env';
 import { Request, Response } from 'express';
 import { authService } from './auth.service';
 import { asyncHandler } from '../../utils/asyncHandler';
@@ -9,7 +10,7 @@ export const emailSignup = asyncHandler(async (req: Request, res: Response) => {
 
   res.cookie('signupToken', result.signupToken, {
     httpOnly: true,
-    secure: process.env.NODE_ENV === 'production',
+    secure: env.NODE_ENV === 'production',
     sameSite: 'lax',
     maxAge: 30 * 60 * 1000,
   });
@@ -28,7 +29,7 @@ export const verifyOtp = asyncHandler(async (req: Request, res: Response) => {
 
   res.cookie('signupToken', result.signupToken, {
     httpOnly: true,
-    secure: process.env.NODE_ENV === 'production',
+    secure: env.NODE_ENV === 'production',
     sameSite: 'lax',
     maxAge: 30 * 60 * 1000,
   });
@@ -51,7 +52,7 @@ export const completeSignup = asyncHandler(async (req: Request, res: Response) =
   res.clearCookie('signupToken');
   res.cookie('authToken', result.authToken, {
     httpOnly: true,
-    secure: process.env.NODE_ENV === 'production',
+    secure: env.NODE_ENV === 'production',
     sameSite: 'lax',
     maxAge: 7 * 24 * 60 * 60 * 1000,
   });
@@ -72,7 +73,7 @@ export const login = asyncHandler(async (req: Request, res: Response) => {
 
   res.cookie('authToken', result.authToken, {
     httpOnly: true,
-    secure: process.env.NODE_ENV === 'production',
+    secure: env.NODE_ENV === 'production',
     sameSite: 'lax',
     maxAge: 7 * 24 * 60 * 60 * 1000,
   });
@@ -102,7 +103,7 @@ export const forgotPassword = asyncHandler(async (req: Request, res: Response) =
 
   res.cookie('signupToken', result.signupToken, {
     httpOnly: true,
-    secure: process.env.NODE_ENV === 'production',
+    secure: env.NODE_ENV === 'production',
     sameSite: 'lax',
     maxAge: 15 * 60 * 1000,
   });
@@ -121,7 +122,7 @@ export const verifyResetOtp = asyncHandler(async (req: Request, res: Response) =
 
   res.cookie('signupToken', result.resetToken, {
     httpOnly: true,
-    secure: process.env.NODE_ENV === 'production',
+    secure: env.NODE_ENV === 'production',
     sameSite: 'lax',
     maxAge: 15 * 60 * 1000,
   });
@@ -163,7 +164,7 @@ export const verifyLoginOtp = asyncHandler(async (req: Request, res: Response) =
 
   res.cookie('authToken', result.authToken, {
     httpOnly: true,
-    secure: process.env.NODE_ENV === 'production',
+    secure: env.NODE_ENV === 'production',
     sameSite: 'lax',
     maxAge: 7 * 24 * 60 * 60 * 1000,
   });
@@ -185,7 +186,7 @@ export const resendOtp = asyncHandler(async (req: Request, res: Response) => {
   if (result.signupToken) {
     res.cookie('signupToken', result.signupToken, {
       httpOnly: true,
-      secure: process.env.NODE_ENV === 'production',
+      secure: env.NODE_ENV === 'production',
       sameSite: 'lax',
       maxAge: 30 * 60 * 1000,
     });

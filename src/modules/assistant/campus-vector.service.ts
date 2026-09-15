@@ -1,3 +1,5 @@
+import { logger } from '../../utils/logger';
+import { env } from '../../config/env';
 import fs from 'fs';
 import path from 'path';
 import prisma from '../../lib/prisma';
@@ -52,7 +54,7 @@ class CampusVectorService {
       `);
       this.isTableInitialized = true;
     } catch (err) {
-      console.error('[CampusVectorService] ensureDatabaseTable failed:', err);
+      logger.error('[CampusVectorService] ensureDatabaseTable failed:', err);
     }
   }
 
@@ -69,7 +71,7 @@ class CampusVectorService {
         }
       }
     } catch (err) {
-      console.error('[CampusVectorService] Failed to load cached vectors:', err);
+      logger.error('[CampusVectorService] Failed to load cached vectors:', err);
     }
   }
 
@@ -85,12 +87,12 @@ class CampusVectorService {
       };
       fs.writeFileSync(this.filePath, JSON.stringify(data, null, 2), 'utf-8');
     } catch (err) {
-      console.error('[CampusVectorService] Failed to save vectors to disk:', err);
+      logger.error('[CampusVectorService] Failed to save vectors to disk:', err);
     }
   }
 
   async generateEmbedding(text: string): Promise<number[]> {
-    const apiKey = process.env.MISTRAL_API_KEY;
+    const apiKey = env.MISTRAL_API_KEY;
     if (apiKey) {
       try {
         const response = await fetch('https://api.mistral.ai/v1/embeddings', {
@@ -112,7 +114,7 @@ class CampusVectorService {
           }
         }
       } catch (err) {
-        console.warn('[CampusVectorService] Mistral API call failed, using fallback:', err);
+        logger.warn('[CampusVectorService] Mistral API call failed, using fallback:', err);
       }
     }
 
@@ -182,7 +184,7 @@ class CampusVectorService {
           vectorStr
         );
       } catch (err) {
-        console.error('[CampusVectorService] Failed to upsert vector in Postgres:', err);
+        logger.error('[CampusVectorService] Failed to upsert vector in Postgres:', err);
       }
     }
 
@@ -257,7 +259,7 @@ class CampusVectorService {
           }));
         }
       } catch (err) {
-        console.error('[CampusVectorService] Supabase pgvector search fallback to local:', err);
+        logger.error('[CampusVectorService] Supabase pgvector search fallback to local:', err);
       }
     }
 
@@ -306,7 +308,7 @@ class CampusVectorService {
             vectorStr
           );
         } catch (err) {
-          console.error('[CampusVectorService] Sync pgvector insert failed for product', p.id, err);
+          logger.error('[CampusVectorService] Sync pgvector insert failed for product', p.id, err);
         }
       }
 

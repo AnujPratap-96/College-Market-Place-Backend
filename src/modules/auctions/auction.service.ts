@@ -1,3 +1,4 @@
+import { logger } from '../../utils/logger';
 import prisma from '../../lib/prisma';
 import { ApiError } from '../../utils/api-error';
 import {
@@ -503,7 +504,7 @@ export class AuctionService {
       try {
         await this.settleAuction(item.id);
       } catch (err) {
-        console.error(`Error auto-settling auction ${item.id}:`, err);
+        logger.error(`Error auto-settling auction ${item.id}:`, err);
       }
     }
   }

@@ -1,3 +1,4 @@
+import { env } from '../../config/env';
 import prisma from '../../lib/prisma';
 import { walletRepository, WalletRepository } from './wallet.repository';
 import { ApiError } from '../../utils/api-error';
@@ -749,8 +750,8 @@ export class WalletService {
   }
 
   private getRazorpayClient(): Razorpay | null {
-    const keyId = process.env.RAZORPAY_KEY_ID;
-    const keySecret = process.env.RAZORPAY_KEY_SECRET;
+    const keyId = env.RAZORPAY_KEY_ID;
+    const keySecret = env.RAZORPAY_KEY_SECRET;
     if (keyId && keySecret && !keyId.includes('placeholder')) {
       return new Razorpay({
         key_id: keyId,
@@ -765,7 +766,7 @@ export class WalletService {
       throw new ApiError(400, 'Amount must be greater than zero.');
     }
     await this.repo.getOrCreateWallet(userId);
-    const keyId = process.env.RAZORPAY_KEY_ID;
+    const keyId = env.RAZORPAY_KEY_ID;
     const client = this.getRazorpayClient();
 
     if (!client || !keyId) {
@@ -810,7 +811,7 @@ export class WalletService {
       throw new ApiError(400, 'Invalid payment amount.');
     }
 
-    const secret = process.env.RAZORPAY_KEY_SECRET;
+    const secret = env.RAZORPAY_KEY_SECRET;
     if (secret) {
       if (!razorpaySignature) {
         throw new ApiError(400, 'Razorpay signature is required for payment verification.');
@@ -823,7 +824,7 @@ export class WalletService {
       if (generatedSignature !== razorpaySignature) {
         throw new ApiError(400, 'Invalid payment signature. Gateway verification failed.');
       }
-    } else if (process.env.NODE_ENV === 'production') {
+    } else if (env.NODE_ENV === 'production') {
       throw new ApiError(500, 'Payment gateway secret not configured.');
     }
 
@@ -866,7 +867,7 @@ export class WalletService {
   }
 
   async handleRazorpayWebhook(rawBody: Buffer, signature: string | undefined, event: any) {
-    const secret = process.env.RAZORPAY_WEBHOOK_SECRET;
+    const secret = env.RAZORPAY_WEBHOOK_SECRET;
     if (!secret) throw new ApiError(500, 'Razorpay webhook secret is not configured.');
     if (!signature) throw new ApiError(400, 'Missing Razorpay webhook signature.');
     const expected = crypto.createHmac('sha256', secret).update(rawBody).digest('hex');

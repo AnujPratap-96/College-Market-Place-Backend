@@ -56,6 +56,7 @@ The backend API and real-time service for CampusCart, a peer-to-peer college mar
 - Razorpay wallet recharge flow
 - Wallet credit only after a verified `payment.captured` webhook
 - UPI withdrawal workflow
+- Optimistic Concurrency Control (OCC) using Postgres version locking for safe checkouts
 
 ### Messaging and Notifications
 
@@ -63,11 +64,14 @@ The backend API and real-time service for CampusCart, a peer-to-peer college mar
 - Real-time message delivery and typing indicators
 - Read receipts and unread counts
 - Socket-based marketplace notifications
+- BullMQ + Redis background worker for reliable transactional email delivery
 
-### CampusBuddy Assistant
+### CampusBuddy Assistant & Search
 
+- Instant Algolia Full-Text search integration (synced via Prisma hooks)
 - Product search using stored embeddings and pgvector when configured
 - Wallet, order, and marketplace guidance
+- Mistral Vision (`pixtral-12b`) AI-powered auto-moderation and safety checks for product listings
 - Admin synchronization endpoint for product embeddings
 
 ## Tech Stack
@@ -77,10 +81,12 @@ The backend API and real-time service for CampusCart, a peer-to-peer college mar
 | Runtime | Node.js 20+ |
 | Language | TypeScript 5.8 |
 | Framework | Express 5 |
-| Database | PostgreSQL / Supabase |
+| Database | PostgreSQL / Supabase (with OCC version locking) |
 | ORM | Prisma 6 |
 | Authentication | JWT, bcrypt, HTTP cookies |
 | Real-Time | Socket.io 4 |
+| Job Queues | BullMQ + Redis |
+| Search Engine | Algolia Full-Text Search |
 | Payments | Razorpay |
 | Storage | Supabase Storage and signed URLs |
 | Validation | Zod |
@@ -182,6 +188,8 @@ GET http://localhost:5000/api/health
 | `SUPABASE_SERVICE_ROLE_KEY` | Server-side Supabase service key |
 | `SUPABASE_STORAGE_BUCKET` | Storage bucket for uploaded media |
 | `BREVO_API_KEY` | Optional transactional email provider key |
+| `ALGOLIA_APPLICATION_ID` | Algolia Application ID for search indexing |
+| `ALGOLIA_ADMIN_API_KEY` | Algolia Admin API Key (Backend only, never expose) |
 
 ## Database and Migrations
 

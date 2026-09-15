@@ -1,3 +1,4 @@
+import { logger } from '../utils/logger';
 import { Request, Response, NextFunction } from 'express';
 
 export default function requestLogger(req: Request, res: Response, next: NextFunction): void {
@@ -17,7 +18,7 @@ export default function requestLogger(req: Request, res: Response, next: NextFun
   res.on('finish', () => {
     const elapsedNs = process.hrtime.bigint() - start;
     const duration = Math.round(Number(elapsedNs) / 1e6);
-    console.log(`[${req.id || 'REQ'}] ${req.method} ${req.originalUrl} ${res.statusCode} - ${duration}ms`);
+    logger.info(`[${req.id || 'REQ'}] ${req.method} ${req.originalUrl} ${res.statusCode} - ${duration}ms`);
   });
 
   next();

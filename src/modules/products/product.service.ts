@@ -1,8 +1,10 @@
+import { env } from '../../config/env';
 import { productRepository, ProductRepository } from './product.repository';
 import { ApiError } from '../../utils/api-error';
 import { ProductType, SubscriptionFrequency } from '@prisma/client';
 import { emitToUser } from '../../lib/socket';
 import { campusVectorService } from '../assistant/campus-vector.service';
+import { syncProductToAlgolia, deleteProductFromAlgolia } from '../../lib/algolia';
 import prisma from '../../lib/prisma';
 import { auctionService } from '../auctions/auction.service';
 
@@ -98,6 +100,7 @@ export class ProductService {
     }
 
     campusVectorService.upsertProduct(product).catch(() => {});
+    syncProductToAlgolia(product);
 
     return product;
   }
@@ -151,6 +154,7 @@ export class ProductService {
 
     const updated = await this.repo.update(id, { ...payload, isFlagged });
     campusVectorService.upsertProduct(updated).catch(() => {});
+    syncProductToAlgolia(updated);
     return updated;
   }
 
@@ -188,6 +192,7 @@ export class ProductService {
 
     const deleted = await this.repo.delete(id);
     campusVectorService.removeProduct(id);
+    deleteProductFromAlgolia(id);
     return deleted;
   }
 
@@ -230,12 +235,14 @@ export class ProductService {
       throw new ApiError(400, 'Image URL is required for AI visual estimation.');
     }
 
-    const apiKey = process.env.MISTRAL_API_KEY;
+    const apiKey = env.MISTRAL_API_KEY;
     let aiResult: any = null;
 
     if (apiKey) {
       try {
-        const promptText = `Analyze this item for an Indian college campus student marketplace listing. ${textHint ? `User notes: "${textHint}". ` : ''}Provide realistic student-budget resale valuation in Indian Rupees (₹ INR). Return pure JSON strictly with keys:
+        const promptText = `Analyze this item for an Indian college campus student marketplace listing. ${textHint ? `User notes: "${textHint}". ` : ''}Provide realistic student-budget resale valuation in Indian Rupees (₹ INR). Also check for safety (no NSFW, weapons, or scam links). Return pure JSON strictly with keys:
+"isSafe": boolean (true if the item is safe and appropriate for a college campus, false if it contains NSFW, weapons, scams, or illegal items),
+"moderationReason": string (if isSafe is false, explain why. if true, leave empty),
 "title": concise string under 50 chars,
 "category": exactly one of ["books", "stationery", "electronics", "cycles", "clothing", "essentials", "furniture", "food", "services", "other"],
 "condition": one of ["NEW", "LIKE_NEW", "GOOD", "FAIR"],

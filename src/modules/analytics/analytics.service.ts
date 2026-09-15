@@ -101,13 +101,15 @@ export class AnalyticsService {
       }))
       .sort((a, b) => b.revenue - a.revenue);
 
-    const productMap = new Map<string, { id: string; title: string; imageUrl?: string | null; totalRevenue: number; salesCount: number }>();
+    const productMap = new Map<string, { id: string; title: string; category: string; price: number; imageUrl?: string | null; totalRevenue: number; salesCount: number }>();
     completedOrders.forEach((o) => {
       const pid = o.product.id;
       if (!productMap.has(pid)) {
         productMap.set(pid, {
           id: pid,
           title: o.product.title,
+          category: o.product.category || 'other',
+          price: o.product.price,
           imageUrl: o.product.imageUrl,
           totalRevenue: 0,
           salesCount: 0,
@@ -118,7 +120,7 @@ export class AnalyticsService {
       item.salesCount += 1;
     });
 
-    const topSellingProducts = Array.from(productMap.values())
+    const topProducts = Array.from(productMap.values())
       .sort((a, b) => b.totalRevenue - a.totalRevenue)
       .slice(0, 5);
 
@@ -135,27 +137,25 @@ export class AnalyticsService {
       : 100;
 
     return {
-      kpi: {
-        grossEarnings: Number(grossEarnings.toFixed(2)),
-        netEarnings: Number(netEarnings.toFixed(2)),
-        inEscrowEarnings: Number(inEscrowEarnings.toFixed(2)),
-        totalSalesCount,
-        averageOrderValue,
-        totalListings,
-        activeListings,
-        responseRate,
-      },
+      grossEarnings: Number(grossEarnings.toFixed(2)),
+      netEarnings: Number(netEarnings.toFixed(2)),
+      inEscrowEarnings: Number(inEscrowEarnings.toFixed(2)),
+      totalSalesCount,
+      averageOrderValue,
+      totalListings,
+      activeListings,
+      responseRate,
       monthlyEarnings,
       categoryBreakdown,
-      topSellingProducts,
+      topProducts,
       recentSales: completedOrders.slice(0, 8).map((o) => ({
-        id: o.id,
+        orderId: o.id,
         orderNumber: o.orderNumber,
         productTitle: o.product.title,
-        buyerName: o.buyer.name,
+        productImage: o.product.imageUrl,
         amount: o.totalAmount,
-        netProfit: Number((o.totalAmount - o.platformFee).toFixed(2)),
-        createdAt: o.createdAt,
+        buyerName: o.buyer.name,
+        completedAt: o.createdAt,
       })),
     };
   }

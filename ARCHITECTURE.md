@@ -33,10 +33,10 @@ graph TD
     subgraph DomainModules["Domain Modules (/src/modules)"]
         Negotiations["negotiations: NegotiationService, State Machine, Auto-Order"]
         Analytics["analytics: AnalyticsService, Profit, Categories, Trends"]
-        Products["products: ProductService, CRUD, AI Vision Valuation"]
+        Products["products: ProductService, CRUD, AI Vision Valuation, Algolia Sync"]
         Messages["messages: MessageService, MessageRepository, Socket Dispatch"]
-        Wallet["wallet: WalletService, Double-Entry Ledger, UPI Payouts"]
-        Orders["orders: OrderService, Handshake OTP, Escrow Engine"]
+        Wallet["wallet: WalletService, Double-Entry Ledger, UPI Payouts, OCC Locks"]
+        Orders["orders: OrderService, Handshake OTP, Escrow Engine, OCC"]
         Subscriptions["subscriptions: SubscriptionService, Vacation Pause, Roster"]
         Auctions["auctions: AuctionService, Live Bidding, 60s Anti-Sniping"]
         Upload["upload: UploadService, Supabase S3 & Strict MIME Filtering"]
@@ -49,6 +49,8 @@ graph TD
         SocketServer["Socket.IO Server (/src/lib/socket.ts)"]
         MistralAI["Mistral AI API (pixtral-12b-2409 Vision & Embeddings)"]
         RazorpayAPI["Razorpay API (Orders, Signatures, Payouts)"]
+        Algolia["Algolia API (Instant Full-Text Search)"]
+        RedisBullMQ["Redis & BullMQ (Background Email Workers)"]
     end
 
     HTTPSRequests --> Helmet --> CORS --> RateLimit --> TraceID --> AuthMid --> ValidateMid --> DomainModules
@@ -59,6 +61,8 @@ graph TD
     DomainModules --> SocketServer
     DomainModules --> MistralAI
     DomainModules --> RazorpayAPI
+    DomainModules --> Algolia
+    DomainModules --> RedisBullMQ
     DomainModules --> ErrorHandler
 ```
 

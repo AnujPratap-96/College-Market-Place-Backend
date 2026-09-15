@@ -1,3 +1,10 @@
+import { logger } from '../utils/logger';
+import { env } from '../config/env';
+import dotenv from 'dotenv';
+dotenv.config();
+
+import { Queue, Worker, Job } from 'bullmq';
+import Redis from 'ioredis';
 import SibApiV3Sdk from 'sib-api-v3-sdk';
 
 export interface EmailJob {
@@ -9,17 +16,29 @@ export interface EmailJob {
   retries?: number;
 }
 
-class EmailQueue {
-  private queue: EmailJob[] = [];
-  private isProcessing = false;
-  private maxRetries = 3;
+const redisUrl = env.REDIS_DB_URL;
+if (!redisUrl) {
+  logger.warn('[EmailQueue] WARNING: REDIS_DB_URL is not set. BullMQ will fail to connect if Redis is not available locally.');
+}
 
+const redisConnection = new Redis(redisUrl || 'redis://127.0.0.1:6379', {
+  maxRetriesPerRequest: null,
+});
+
+const queueName = 'email-queue';
+
+export const emailBullQueue = new Queue<EmailJob>(queueName, {
+  connection: redisConnection,
+  skipVersionCheck: true,
+});
+
+class EmailQueue {
   constructor() {
     this.initBrevoClient();
   }
 
   private initBrevoClient() {
-    const apiKey = process.env.BREVO_API_KEY;
+    const apiKey = env.BREVO_API_KEY;
     if (apiKey) {
       const client = SibApiV3Sdk.ApiClient.instance;
       client.authentications['api-key'].apiKey = apiKey;
@@ -27,13 +46,14 @@ class EmailQueue {
   }
 
   enqueue(job: EmailJob): void {
-    this.queue.push({
-      ...job,
-      retries: job.retries ?? 0,
-    });
-
-    setImmediate(() => {
-      this.processQueue();
+    emailBullQueue.add('send-email', job, {
+      attempts: 3,
+      backoff: {
+        type: 'exponential',
+        delay: 2000,
+      },
+    }).catch(err => {
+      logger.error('[EmailQueue] Failed to enqueue job:', err);
     });
   }
 
@@ -41,43 +61,12 @@ class EmailQueue {
     return this.deliverEmail(job);
   }
 
-  private async processQueue(): Promise<void> {
-    if (this.isProcessing || this.queue.length === 0) {
-      return;
-    }
-
-    this.isProcessing = true;
-
-    while (this.queue.length > 0) {
-      const currentJob = this.queue.shift();
-      if (!currentJob) continue;
-
-      const success = await this.deliverEmail(currentJob);
-      if (!success) {
-        const attempts = (currentJob.retries || 0) + 1;
-        if (attempts < this.maxRetries) {
-          const delay = attempts * 2000;
-          setTimeout(() => {
-            this.enqueue({
-              ...currentJob,
-              retries: attempts,
-            });
-          }, delay);
-        } else {
-          console.error(`[EmailQueue] Job permanently failed after ${attempts} attempts for: ${currentJob.to}`);
-        }
-      }
-    }
-
-    this.isProcessing = false;
-  }
-
-  private async deliverEmail(job: EmailJob): Promise<boolean> {
+  async deliverEmail(job: EmailJob): Promise<boolean> {
     try {
       const start = Date.now();
-      const apiKey = process.env.BREVO_API_KEY;
+      const apiKey = env.BREVO_API_KEY;
       if (!apiKey || apiKey.trim() === '') {
-        console.warn(`[EmailQueue] BREVO_API_KEY not configured. Simulated dispatch to: ${job.to}`);
+        logger.warn(`[EmailQueue] BREVO_API_KEY not configured. Simulated dispatch to: ${job.to}`);
         return true;
       }
 
@@ -99,13 +88,32 @@ class EmailQueue {
 
       await emailApi.sendTransacEmail(emailPayload);
       const elapsed = Date.now() - start;
-      console.log(`[EmailQueue] Dispatched "${job.subject}" to ${job.to} in ${elapsed}ms`);
+      logger.info(`[EmailQueue] Dispatched "${job.subject}" to ${job.to} in ${elapsed}ms`);
       return true;
     } catch (err: any) {
-      console.error(`[EmailQueue] Failed sending to ${job.to}:`, err?.response?.body || err.message);
-      return false;
+      logger.error(`[EmailQueue] Failed sending to ${job.to}:`, err?.response?.body || err.message);
+      throw err;
     }
   }
 }
 
 export const emailQueue = new EmailQueue();
+
+const emailWorker = new Worker<EmailJob>(
+  queueName,
+  async (job: Job<EmailJob>) => {
+    await emailQueue.deliverEmail(job.data);
+  },
+  { 
+    connection: redisConnection,
+    skipVersionCheck: true 
+  }
+);
+
+emailWorker.on('completed', (job) => {
+  logger.info(`[EmailWorker] Job ${job.id} completed successfully`);
+});
+
+emailWorker.on('failed', (job, err) => {
+  logger.error(`[EmailWorker] Job ${job?.id} failed with error: ${err.message}`);
+});

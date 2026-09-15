@@ -1,3 +1,4 @@
+import { logger } from '../utils/logger';
 import fs from 'fs';
 import path from 'path';
 import prisma from '../lib/prisma';
@@ -65,7 +66,7 @@ const main = async () => {
     };
   }
 
-  console.log(
+  logger.info(
     JSON.stringify(
       {
         totalProducts,
@@ -85,7 +86,7 @@ const main = async () => {
 
 main()
   .catch((error) => {
-    console.error(error);
+    logger.error(error);
     process.exitCode = 1;
   })
   .finally(async () => {
