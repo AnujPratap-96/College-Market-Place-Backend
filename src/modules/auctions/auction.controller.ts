@@ -5,8 +5,9 @@ import { successResponse } from '../../utils/response';
 
 export const createAuction = asyncHandler(async (req: Request, res: Response) => {
   const sellerId = req.userId!;
+  const isAdmin = req.role === 'ADMIN';
   const data = req.validated?.body || req.body;
-  const auction = await auctionService.createAuction(sellerId, data);
+  const auction = await auctionService.createAuction(sellerId, data, isAdmin);
 
   return successResponse(res, {
     statusCode: 201,

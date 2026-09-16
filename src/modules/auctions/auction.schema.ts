@@ -6,9 +6,10 @@ export const createAuctionBodySchema = z.object({
   description: z.string().min(5, 'Description must be at least 5 characters'),
   category: z.string().min(1, 'Category is required'),
   imageUrl: z.string().optional(),
+  images: z.array(z.string()).optional(),
   startingBid: z.number().positive('Starting bid must be positive'),
   minIncrement: z.number().positive().default(50).optional(),
-  reservePrice: z.number().positive().optional(),
+  reservePrice: z.number().min(0).optional(),
   durationHours: z.number().min(0.01).max(168).default(24),
   antiSnipingSeconds: z.number().min(10).max(300).default(60).optional(),
 });

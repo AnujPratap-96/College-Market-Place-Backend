@@ -16,7 +16,7 @@ import { CreateAuctionInput } from './auction.schema';
 import { domainEvents } from '../../lib/events';
 
 export class AuctionService {
-  async createAuction(sellerId: string, input: CreateAuctionInput) {
+  async createAuction(sellerId: string, input: CreateAuctionInput, isAdmin: boolean = false) {
     const durationHours = input.durationHours ?? 24;
     const startTime = new Date();
     const endTime = new Date(startTime.getTime() + durationHours * 3600 * 1000);
@@ -30,6 +30,7 @@ export class AuctionService {
           category: input.category,
           type: ProductType.AUCTION,
           imageUrl: input.imageUrl,
+          images: input.images || [],
           status: ProductStatus.AVAILABLE,
           ownerId: sellerId,
         },
@@ -46,7 +47,7 @@ export class AuctionService {
           startTime,
           endTime,
           antiSnipingSeconds: input.antiSnipingSeconds ?? 60,
-          status: AuctionStatus.PENDING,
+          status: isAdmin ? AuctionStatus.ACTIVE : AuctionStatus.PENDING,
         },
         include: {
           product: true,
@@ -545,7 +546,8 @@ export class AuctionService {
       throw new ApiError(400, `Auction is not pending approval (current status: ${auction.status}).`);
     }
 
-    const duration = durationHours || 24;
+    const originalDurationHours = (auction.endTime.getTime() - auction.startTime.getTime()) / 3600000;
+    const duration = durationHours || originalDurationHours || 24;
     const startTime = new Date();
     const endTime = new Date(startTime.getTime() + duration * 3600 * 1000);
 

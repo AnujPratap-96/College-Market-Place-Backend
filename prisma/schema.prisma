@@ -29,6 +29,7 @@ model User {
   ordersBought     Order[]         @relation("BuyerOrders")
   ordersSold       Order[]         @relation("SellerOrders")
   reportsSubmitted ProductReport[] @relation("UserReports")
+  holidays         Holiday[]
   subscriptionsSubscribed Subscription[] @relation("UserSubscriptions")
   subscriptionsProvided   Subscription[] @relation("ProviderSubscriptions")
   wallet           Wallet?
@@ -59,6 +60,7 @@ model Product {
   status          ProductStatus          @default(AVAILABLE)
   isFlagged       Boolean                @default(false)
   frequency       SubscriptionFrequency?
+  deliveryDays    String[]               @default([])
   deliverySlots   String?
   serviceDuration String?
   createdAt       DateTime               @default(now())
@@ -582,3 +584,14 @@ model WithdrawalRequest {
 
   @@index([userId, status])
 }
+
+model Holiday {
+  id          String   @id @default(cuid())
+  userId      String
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  startDate   DateTime
+  endDate     DateTime
+  reason      String?
+  createdAt   DateTime @default(now())
+}
+
