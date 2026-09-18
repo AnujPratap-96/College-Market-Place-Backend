@@ -43,6 +43,9 @@ class BackgroundScheduler {
       // 2. Auto-settle completed subscription billing cycles
       await subscriptionService.settleEndedCycles();
 
+      // 4. Auto-skip deliveries that fall on a holiday
+      await subscriptionService.skipDeliveriesOnHolidays();
+
       // 3. Monitor overdue rentals
       await this.checkOverdueRentals();
     } catch (error) {

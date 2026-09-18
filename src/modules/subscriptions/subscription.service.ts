@@ -8,6 +8,7 @@ import {
   DeliveryScheduleStatus,
   ProductType,
 } from '@prisma/client';
+import { emailQueue } from '../../lib/email-queue';
 import { emitToUser } from '../../lib/socket';
 import { getPlatformCommissionRate } from '../admin/settings.service';
 
@@ -18,7 +19,7 @@ export class SubscriptionService {
     subscriberId: string,
     data: {
       productId: string;
-      frequency?: SubscriptionFrequency;
+      deliveryDays: string[];
       deliverySlots?: string;
       autoRenew?: boolean;
     }
@@ -39,8 +40,8 @@ export class SubscriptionService {
       throw new ApiError(400, 'You cannot subscribe to your own service.');
     }
 
-    const frequency = data.frequency || product.frequency || SubscriptionFrequency.MONTHLY;
-    const durationDays = frequency === SubscriptionFrequency.WEEKLY ? 7 : 30;
+    const deliveryDays = data.deliveryDays;
+    const durationDays = 30; // Subscriptions billed monthly
     const cycleAmount = product.price;
     const commissionRate = await getPlatformCommissionRate();
     const platformFee = Number((cycleAmount * commissionRate).toFixed(2));
@@ -50,13 +51,18 @@ export class SubscriptionService {
     const nextBillingDate = endDate;
     const subscriptionNumber = `SUB-${Date.now().toString().slice(-6)}-${Math.floor(100 + Math.random() * 900)}`;
 
+    const dayNames = ["SUN", "MON", "TUE", "WED", "THU", "FRI", "SAT"];
     const deliveriesData: { scheduledDate: Date; note?: string }[] = [];
+    
     for (let i = 1; i <= durationDays; i++) {
       const scheduledDate = new Date(startDate.getTime() + i * 24 * 60 * 60 * 1000);
-      deliveriesData.push({
-        scheduledDate,
-        note: data.deliverySlots || product.deliverySlots || undefined,
-      });
+      const dayStr = dayNames[scheduledDate.getDay()];
+      if (deliveryDays.includes(dayStr)) {
+        deliveriesData.push({
+          scheduledDate,
+          note: data.deliverySlots || product.deliverySlots || undefined,
+        });
+      }
     }
 
     return prisma.$transaction(
@@ -67,7 +73,7 @@ export class SubscriptionService {
             subscriberId,
             providerId: product.ownerId,
             productId: product.id,
-            frequency,
+            deliveryDays,
             cycleAmount,
             platformFee,
             startDate,
@@ -373,6 +379,84 @@ export class SubscriptionService {
 
     return { settledCount: settlements.length, settlements };
   }
+  async skipDeliveriesOnHolidays() {
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const endOfDay = new Date(today);
+    endOfDay.setHours(23, 59, 59, 999);
+
+    const scheduledDeliveries = await prisma.subscriptionDelivery.findMany({
+      where: {
+        status: DeliveryScheduleStatus.SCHEDULED,
+        scheduledDate: {
+          gte: today,
+          lte: endOfDay,
+        }
+      },
+      include: {
+        subscription: {
+          include: {
+            product: { select: { title: true } },
+            subscriber: { select: { id: true, email: true, name: true } },
+            provider: { select: { id: true, email: true, name: true } },
+          }
+        }
+      }
+    });
+
+    if (scheduledDeliveries.length === 0) return;
+
+    for (const del of scheduledDeliveries) {
+      const sub = del.subscription;
+      const isHoliday = await prisma.holiday.findFirst({
+        where: {
+          userId: { in: [sub.subscriberId, sub.providerId] },
+          startDate: { lte: del.scheduledDate },
+          endDate: { gte: del.scheduledDate }
+        }
+      });
+
+      if (isHoliday) {
+        await prisma.$transaction(async (tx) => {
+          await tx.subscriptionDelivery.update({
+            where: { id: del.id },
+            data: { status: DeliveryScheduleStatus.SKIPPED, note: "Skipped automatically due to Holiday" }
+          });
+
+          const totalDeliveries = await tx.subscriptionDelivery.count({ where: { subscriptionId: sub.id } });
+          const dailyRate = totalDeliveries > 0 ? (sub.cycleAmount / totalDeliveries) : 0;
+          
+          if (dailyRate > 0) {
+             await walletService.refundSubscriptionMissed(
+              sub.subscriberId,
+              dailyRate,
+              sub.id,
+              del.id,
+              tx as any
+            );
+          }
+        });
+
+        const dateStr = del.scheduledDate.toDateString();
+        const subject = `Subscription Delivery Skipped - ${dateStr}`;
+        const msgHtml = `<p>Hello,</p><p>The scheduled delivery for <strong>${sub.product.title}</strong> on ${dateStr} has been skipped because today is marked as a holiday.</p><p>A pro-rata refund has been credited to the student\'s wallet.</p>`;
+
+        emailQueue.enqueue({
+          to: sub.subscriber.email,
+          subject,
+          html: msgHtml
+        });
+
+        emailQueue.enqueue({
+          to: sub.provider.email,
+          subject,
+          html: msgHtml
+        });
+      }
+    }
+  }
+
+
 }
 
 export const subscriptionService = new SubscriptionService();

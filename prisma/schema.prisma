@@ -9,50 +9,55 @@ datasource db {
 }
 
 model User {
-  id               String          @id @default(cuid())
-  name             String
-  phone            String          @unique
-  email            String          @unique
-  college          String
-  branch           String
-  year             String
-  role             Role            @default(USER)
-  isVerified       Boolean         @default(false)
-  createdAt        DateTime        @default(now())
-  updatedAt        DateTime        @updatedAt
-  password         String
-  profileImage     String?
-  messages         Message[]       @relation("MessagesToUser")
-  products         Product[]       @relation("UserProducts")
-  requestsMade     Request[]       @relation("BuyerRequests")
-  requestsGot      Request[]       @relation("SellerRequests")
-  ordersBought     Order[]         @relation("BuyerOrders")
-  ordersSold       Order[]         @relation("SellerOrders")
-  reportsSubmitted ProductReport[] @relation("UserReports")
-  holidays         Holiday[]
-  subscriptionsSubscribed Subscription[] @relation("UserSubscriptions")
-  subscriptionsProvided   Subscription[] @relation("ProviderSubscriptions")
-  wallet           Wallet?
-  walletTopups     WalletTopupPayment[]
-  auctionsSold     Auction[]       @relation("SellerAuctions")
-  auctionsWinning  Auction[]       @relation("CurrentBidderAuctions")
-  bids             Bid[]           @relation("UserBids")
-  reviewsGiven     Review[]        @relation("ReviewsGiven")
-  reviewsReceived  Review[]        @relation("ReviewsReceived")
-  wantedRequests   WantedRequest[] @relation("UserWantedRequests")
-  wantedOffers     WantedOffer[]   @relation("UserWantedOffers")
-  negotiationsMade NegotiationOffer[] @relation("BuyerNegotiations")
-  negotiationsReceived NegotiationOffer[] @relation("SellerNegotiations")
-  withdrawals      WithdrawalRequest[]
+  id                      String               @id @default(cuid())
+  name                    String
+  phone                   String               @unique
+  email                   String               @unique
+  college                 String
+  branch                  String
+  year                    String
+  role                    Role                 @default(USER)
+  referralCode            String?              @unique
+  referredById            String?
+  referredBy              User?                @relation("UserReferrals", fields: [referredById], references: [id])
+  referrals               User[]               @relation("UserReferrals")
+  isVerified              Boolean              @default(false)
+  createdAt               DateTime             @default(now())
+  updatedAt               DateTime             @updatedAt
+  password                String
+  profileImage            String?
+  messages                Message[]            @relation("MessagesToUser")
+  products                Product[]            @relation("UserProducts")
+  requestsMade            Request[]            @relation("BuyerRequests")
+  requestsGot             Request[]            @relation("SellerRequests")
+  ordersBought            Order[]              @relation("BuyerOrders")
+  ordersSold              Order[]              @relation("SellerOrders")
+  reportsSubmitted        ProductReport[]      @relation("UserReports")
+  holidays                Holiday[]
+  subscriptionsSubscribed Subscription[]       @relation("UserSubscriptions")
+  subscriptionsProvided   Subscription[]       @relation("ProviderSubscriptions")
+  wallet                  Wallet?
+  walletTopups            WalletTopupPayment[]
+  pushSubscriptions       PushSubscription[]
+  auctionsSold            Auction[]            @relation("SellerAuctions")
+  auctionsWinning         Auction[]            @relation("CurrentBidderAuctions")
+  bids                    Bid[]                @relation("UserBids")
+  reviewsGiven            Review[]             @relation("ReviewsGiven")
+  reviewsReceived         Review[]             @relation("ReviewsReceived")
+  wantedRequests          WantedRequest[]      @relation("UserWantedRequests")
+  wantedOffers            WantedOffer[]        @relation("UserWantedOffers")
+  negotiationsMade        NegotiationOffer[]   @relation("BuyerNegotiations")
+  negotiationsReceived    NegotiationOffer[]   @relation("SellerNegotiations")
+  withdrawals             WithdrawalRequest[]
 }
 
 model Product {
-  id          String          @id @default(cuid())
-  title       String
-  description String
-  price       Float
-  type        ProductType
-  category    String
+  id              String                 @id @default(cuid())
+  title           String
+  description     String
+  price           Float
+  type            ProductType
+  category        String
   imageUrl        String?
   images          String[]               @default([])
   securityDeposit Float?
@@ -170,19 +175,19 @@ model Wallet {
 }
 
 model WalletLedger {
-  id            String      @id @default(cuid())
+  id            String     @id @default(cuid())
   walletId      String
-  wallet        Wallet      @relation(fields: [walletId], references: [id], onDelete: Cascade)
+  wallet        Wallet     @relation(fields: [walletId], references: [id], onDelete: Cascade)
   amount        Float
   type          LedgerType
   balanceBefore Float
   balanceAfter  Float
-  escrowBefore  Float       @default(0.0)
-  escrowAfter   Float       @default(0.0)
+  escrowBefore  Float      @default(0.0)
+  escrowAfter   Float      @default(0.0)
   referenceType String
   referenceId   String?
   description   String
-  createdAt     DateTime    @default(now())
+  createdAt     DateTime   @default(now())
 
   @@index([walletId, createdAt])
   @@index([walletId, type, createdAt])
@@ -227,28 +232,28 @@ model Order {
 }
 
 model Subscription {
-  id                 String                @id @default(cuid())
-  subscriptionNumber String                @unique
+  id                 String                 @id @default(cuid())
+  subscriptionNumber String                 @unique
   subscriberId       String
-  subscriber         User                  @relation("UserSubscriptions", fields: [subscriberId], references: [id])
+  subscriber         User                   @relation("UserSubscriptions", fields: [subscriberId], references: [id])
   providerId         String
-  provider           User                  @relation("ProviderSubscriptions", fields: [providerId], references: [id])
+  provider           User                   @relation("ProviderSubscriptions", fields: [providerId], references: [id])
   productId          String
-  product            Product               @relation(fields: [productId], references: [id])
-  frequency          SubscriptionFrequency @default(MONTHLY)
+  product            Product                @relation(fields: [productId], references: [id])
+  deliveryDays       String[]               @default([])
   cycleAmount        Float
-  platformFee        Float                 @default(0.0)
+  platformFee        Float                  @default(0.0)
   startDate          DateTime
   endDate            DateTime
   nextBillingDate    DateTime
-  status             SubscriptionStatus    @default(ACTIVE)
-  autoRenew          Boolean               @default(false)
+  status             SubscriptionStatus     @default(ACTIVE)
+  autoRenew          Boolean                @default(false)
   deliverySlots      String?
   vacationFrom       DateTime?
   vacationTo         DateTime?
   deliveries         SubscriptionDelivery[]
-  createdAt          DateTime              @default(now())
-  updatedAt          DateTime              @updatedAt
+  createdAt          DateTime               @default(now())
+  updatedAt          DateTime               @updatedAt
 
   @@index([subscriberId, status])
   @@index([providerId, status])
@@ -477,29 +482,29 @@ model WantedRequest {
 }
 
 model WantedOffer {
-  id             String         @id @default(cuid())
+  id             String        @id @default(cuid())
   requestId      String
-  request        WantedRequest  @relation(fields: [requestId], references: [id], onDelete: Cascade)
+  request        WantedRequest @relation(fields: [requestId], references: [id], onDelete: Cascade)
   offererId      String
-  offerer        User           @relation("UserWantedOffers", fields: [offererId], references: [id], onDelete: Cascade)
+  offerer        User          @relation("UserWantedOffers", fields: [offererId], references: [id], onDelete: Cascade)
   amount         Float
   message        String?
   pickupLocation String
-  status         OfferStatus    @default(PENDING)
-  orderId        String?        @unique
-  order          Order?         @relation("WantedOfferOrder", fields: [orderId], references: [id], onDelete: SetNull)
-  createdAt      DateTime       @default(now())
-  updatedAt      DateTime       @updatedAt
+  status         OfferStatus   @default(PENDING)
+  orderId        String?       @unique
+  order          Order?        @relation("WantedOfferOrder", fields: [orderId], references: [id], onDelete: SetNull)
+  createdAt      DateTime      @default(now())
+  updatedAt      DateTime      @updatedAt
 
   @@index([requestId])
   @@index([offererId])
 }
 
 model ProductEmbedding {
-  productId String   @id @map("product_id")
-  product   Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
+  productId String                       @id @map("product_id")
+  product   Product                      @relation(fields: [productId], references: [id], onDelete: Cascade)
   embedding Unsupported("vector(1024)")?
-  updatedAt DateTime @default(now()) @updatedAt @map("updated_at")
+  updatedAt DateTime                     @default(now()) @updatedAt @map("updated_at")
 
   @@map("product_embeddings")
 }
@@ -551,12 +556,12 @@ model NegotiationOffer {
   offeredPrice  Float
   status        NegotiationStatus @default(PENDING)
   offeredById   String
-  messageId     String?      @unique
-  message       Message?     @relation(fields: [messageId], references: [id], onDelete: SetNull)
-  orderId       String?      @unique
-  order         Order?       @relation("NegotiationOrder", fields: [orderId], references: [id], onDelete: SetNull)
-  createdAt     DateTime     @default(now())
-  updatedAt     DateTime     @updatedAt
+  messageId     String?           @unique
+  message       Message?          @relation(fields: [messageId], references: [id], onDelete: SetNull)
+  orderId       String?           @unique
+  order         Order?            @relation("NegotiationOrder", fields: [orderId], references: [id], onDelete: SetNull)
+  createdAt     DateTime          @default(now())
+  updatedAt     DateTime          @updatedAt
 
   @@index([productId, status])
   @@index([buyerId, sellerId])
@@ -586,12 +591,21 @@ model WithdrawalRequest {
 }
 
 model Holiday {
-  id          String   @id @default(cuid())
-  userId      String
-  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  startDate   DateTime
-  endDate     DateTime
-  reason      String?
-  createdAt   DateTime @default(now())
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  startDate DateTime
+  endDate   DateTime
+  reason    String?
+  createdAt DateTime @default(now())
 }
 
+model PushSubscription {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  endpoint  String   @unique
+  p256dh    String
+  auth      String
+  createdAt DateTime @default(now())
+}

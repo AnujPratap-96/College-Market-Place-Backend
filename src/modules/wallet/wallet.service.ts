@@ -162,7 +162,65 @@ export class WalletService {
     return result;
   }
 
+  
+  async triggerFirstTransactionBonus(userId: string, tx: Prisma.TransactionClient) {
+    const user = await tx.user.findUnique({ where: { id: userId } });
+    if (!user || !user.referredById) return;
+
+    // Check if this is their first transaction by counting HOLD entries
+    const wallet = await this.repo.getOrCreateWallet(userId, tx);
+    const holdCount = await tx.walletLedger.count({
+      where: { walletId: wallet.id, type: LedgerType.HOLD }
+    });
+
+    // If holdCount is 0, this is their very first HOLD.
+    if (holdCount === 0) {
+      // Credit to Referrer
+      const referrerWallet = await this.repo.getOrCreateWallet(user.referredById, tx);
+      const referrerNewBalance = referrerWallet.balance + 50.0;
+      await tx.wallet.update({ where: { id: referrerWallet.id }, data: { balance: referrerNewBalance } });
+      await tx.walletLedger.create({
+        data: {
+          walletId: referrerWallet.id,
+          amount: 50.0,
+          type: LedgerType.CREDIT,
+          balanceBefore: referrerWallet.balance,
+          balanceAfter: referrerNewBalance,
+          escrowBefore: referrerWallet.escrowBalance,
+          escrowAfter: referrerWallet.escrowBalance,
+          description: 'Referral bonus (friend made first purchase)',
+          referenceType: 'REFERRAL_REWARD',
+          referenceId: userId
+        }
+      });
+
+      // Credit to Referee (New User)
+      const userNewBalance = wallet.balance + 50.0;
+      await tx.wallet.update({ where: { id: wallet.id }, data: { balance: userNewBalance } });
+      await tx.walletLedger.create({
+        data: {
+          walletId: wallet.id,
+          amount: 50.0,
+          type: LedgerType.CREDIT,
+          balanceBefore: wallet.balance,
+          balanceAfter: userNewBalance,
+          escrowBefore: wallet.escrowBalance,
+          escrowAfter: wallet.escrowBalance,
+          description: 'Welcome bonus (first purchase completed)',
+          referenceType: 'SIGNUP_REWARD',
+          referenceId: user.id
+        }
+      });
+      
+      // Clear referredById so we don't accidentally do it again (extra safety)
+      await tx.user.update({
+        where: { id: userId },
+        data: { referredById: null }
+      });
+    }
+  }
   async holdEscrow(buyerId: string, amount: number, orderId: string, tx: Prisma.TransactionClient) {
+    await this.triggerFirstTransactionBonus(buyerId, tx);
     const wallet = await this.repo.getOrCreateWallet(buyerId, tx);
 
     if (wallet.balance < amount) {
@@ -422,6 +480,7 @@ export class WalletService {
     auctionId: string,
     tx: Prisma.TransactionClient
   ) {
+    await this.triggerFirstTransactionBonus(bidderId, tx);
     const wallet = await this.repo.getOrCreateWallet(bidderId, tx);
 
     if (wallet.balance < amount) {
@@ -866,6 +925,7 @@ export class WalletService {
     );*/
   }
 
+  
   async handleRazorpayWebhook(rawBody: Buffer, signature: string | undefined, event: any) {
     const secret = env.RAZORPAY_WEBHOOK_SECRET;
     if (!secret) throw new ApiError(500, 'Razorpay webhook secret is not configured.');
@@ -874,44 +934,94 @@ export class WalletService {
     if (expected.length !== signature.length || !crypto.timingSafeEqual(Buffer.from(expected), Buffer.from(signature))) {
       throw new ApiError(401, 'Invalid Razorpay webhook signature.');
     }
-    if (event?.event !== 'payment.captured') return { handled: false };
-
-    const payment = event?.payload?.payment?.entity;
-    const orderId = payment?.order_id;
-    const paymentId = payment?.id;
-    const amountPaise = Number(payment?.amount);
-    if (!orderId || !paymentId || !Number.isInteger(amountPaise) || amountPaise <= 0) {
+    
+    const payload = event.payload?.payment?.entity;
+    if (!payload || !payload.id || !payload.order_id) {
       throw new ApiError(400, 'Invalid Razorpay payment payload.');
     }
-
+    
     return prisma.$transaction(async (tx) => {
-      const topup = await tx.walletTopupPayment.findUnique({ where: { orderId } });
-      if (!topup) throw new ApiError(404, 'Wallet payment order not found.');
+      const orderId = payload.order_id;
+      const paymentId = payload.id;
+      
+      const topup = await tx.walletTopupPayment.findUnique({
+        where: { orderId },
+        include: { user: true }
+      });
+      
+      if (!topup) return { handled: true, duplicate: false, notFound: true };
       if (topup.status === 'PAID') return { handled: true, duplicate: true };
-      if (topup.amountPaise !== amountPaise) throw new ApiError(400, 'Payment amount does not match the wallet order.');
-
-      const wallet = await this.repo.getOrCreateWallet(topup.userId, tx);
-      const balanceBefore = wallet.balance;
-      const amount = amountPaise / 100;
-      const updatedWallet = await this.repo.updateBalances(wallet.id, balanceBefore + amount, wallet.escrowBalance, tx);
-      const ledger = await this.repo.createLedgerEntry({
-        walletId: wallet.id,
-        amount,
-        type: LedgerType.CREDIT,
-        balanceBefore,
-        balanceAfter: balanceBefore + amount,
-        escrowBefore: wallet.escrowBalance,
-        escrowAfter: wallet.escrowBalance,
-        referenceType: 'PAYMENT_GATEWAY',
-        referenceId: paymentId,
-        description: `Recharge via Razorpay (${paymentId})`,
-      }, tx);
+      
+      const wallet = await this.repo.getOrCreateWallet(topup.userId, tx as any);
+      const newBalance = wallet.balance + topup.amountPaise / 100;
+      const updatedWallet = await tx.wallet.update({
+        where: { id: wallet.id },
+        data: { balance: newBalance }
+      });
+      const ledger = await tx.walletLedger.create({
+        data: {
+          walletId: wallet.id,
+          amount: topup.amountPaise / 100,
+          type: LedgerType.CREDIT,
+          balanceBefore: wallet.balance,
+          balanceAfter: newBalance,
+          escrowBefore: wallet.escrowBalance,
+          escrowAfter: wallet.escrowBalance,
+          referenceType: 'TOPUP',
+          referenceId: paymentId,
+          description: `Recharge via Razorpay (${paymentId})`,
+        }
+      });
       await tx.walletTopupPayment.update({
         where: { orderId },
         data: { paymentId, status: 'PAID', creditedAt: new Date() },
       });
       return { handled: true, duplicate: false, wallet: updatedWallet, ledger };
-    }, { maxWait: 15000, timeout: 30000 });
+    });
+  }
+
+  async creditReferralBonus(referrerId: string, referredUserId: string, amount: number) {
+    return prisma.$transaction(async (tx) => {
+      const wallet = await this.repo.getOrCreateWallet(referrerId, tx as any);
+      const newBalance = wallet.balance + amount;
+      await tx.wallet.update({ where: { id: wallet.id }, data: { balance: newBalance } });
+      await tx.walletLedger.create({
+        data: {
+          walletId: wallet.id,
+          amount,
+          type: LedgerType.CREDIT,
+          balanceBefore: wallet.balance,
+          balanceAfter: newBalance,
+          escrowBefore: wallet.escrowBalance,
+          escrowAfter: wallet.escrowBalance,
+          description: 'Referral bonus for inviting new user',
+          referenceType: 'REFERRAL_REWARD',
+          referenceId: referredUserId
+        }
+      });
+    });
+  }
+
+  async creditSignupBonus(userId: string, amount: number) {
+    return prisma.$transaction(async (tx) => {
+      const wallet = await this.repo.getOrCreateWallet(userId, tx as any);
+      const newBalance = wallet.balance + amount;
+      await tx.wallet.update({ where: { id: wallet.id }, data: { balance: newBalance } });
+      await tx.walletLedger.create({
+        data: {
+          walletId: wallet.id,
+          amount,
+          type: LedgerType.CREDIT,
+          balanceBefore: wallet.balance,
+          balanceAfter: newBalance,
+          escrowBefore: wallet.escrowBalance,
+          escrowAfter: wallet.escrowBalance,
+          description: 'Welcome bonus for using a referral code',
+          referenceType: 'SIGNUP_REWARD',
+          referenceId: userId
+        }
+      });
+    });
   }
 }
 

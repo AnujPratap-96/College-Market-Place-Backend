@@ -4,7 +4,7 @@ import { requestSchema } from '../../schemas/request.schema';
 export const subscribeSchema = requestSchema({
   body: z.object({
     productId: z.string().min(1, 'Product/Service ID is required'),
-    frequency: z.enum(['WEEKLY', 'MONTHLY']).default('MONTHLY'),
+    deliveryDays: z.array(z.string()).min(1, 'Select at least one delivery day'),
     deliverySlots: z.string().trim().optional(),
     autoRenew: z.boolean().default(false),
   }),

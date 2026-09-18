@@ -4,6 +4,8 @@ import { authRepository, AuthRepository } from './auth.repository';
 import { generateOtp } from '../../utils/generateOtp';
 import { sendOtpEmail } from '../../utils/sendOtpEmail';
 import { ApiError } from '../../utils/api-error';
+import { walletService } from '../wallet/wallet.service';
+import crypto from 'crypto';
 import { env } from '../../config/env';
 
 export class AuthService {
@@ -41,6 +43,7 @@ export class AuthService {
     return { message: 'Email verified successfully.', signupToken };
   }
 
+
   async completeSignup(data: {
     email: string;
     phone: string;
@@ -49,6 +52,7 @@ export class AuthService {
     college: string;
     branch: string;
     year: string;
+    referralCode?: string;
   }): Promise<{ user: any; authToken: string }> {
     const [existingEmail, existingPhone] = await Promise.all([
       this.repo.findUserByEmail(data.email),
@@ -58,18 +62,38 @@ export class AuthService {
     if (existingEmail) {
       throw new ApiError(400, 'User already registered.');
     }
-
     if (existingPhone) {
       throw new ApiError(400, 'Phone number is already associated with another account.');
     }
 
+    let referredById = undefined;
+    if (data.referralCode) {
+      const referrer = await this.repo.findUserByReferralCode(data.referralCode.toUpperCase());
+      if (referrer) {
+        referredById = referrer.id;
+      }
+    }
+
     const hashedPassword = await bcrypt.hash(data.password, 10);
+    
+    // Generate unique referral code for this new user
+    let uniqueCode = '';
+    let isUnique = false;
+    while (!isUnique) {
+      uniqueCode = crypto.randomBytes(3).toString('hex').toUpperCase(); // 6 chars
+      const existingCodeUser = await this.repo.findUserByReferralCode(uniqueCode);
+      if (!existingCodeUser) isUnique = true;
+    }
 
     const user = await this.repo.createUser({
       ...data,
       password: hashedPassword,
       isVerified: true,
+      referralCode: uniqueCode,
+      referredById,
     });
+
+
 
     const authToken = jwt.sign({ userId: user.id, role: user.role }, env.JWT_LOGIN_SECRET, { expiresIn: '7d' });
 

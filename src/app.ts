@@ -14,6 +14,8 @@ import adminRoutes from './modules/admin/admin.routes';
 import walletRoutes from './modules/wallet/wallet.routes';
 import orderRoutes from './modules/orders/order.routes';
 import subscriptionRoutes from './modules/subscriptions/subscription.routes';
+import holidayRoutes from './modules/holidays/holiday.routes';
+import pushRoutes from './modules/push/push.routes';
 import uploadRoutes from './modules/upload/upload.routes';
 import auctionRoutes from './modules/auctions/auction.routes';
 import assistantRoutes from './modules/assistant/assistant.routes';

@@ -112,9 +112,21 @@ export const getIo = (): SocketIOServer => {
   return io;
 };
 
-export const emitToUser = (userId: string, event: string, payload: any): void => {
+import { pushService } from "../modules/push/push.service";
+
+export const emitToUser = (userId: string, event: string, payload: any, pushConfig?: { title: string; body: string; url?: string }): void => {
   if (io) {
     io.to(`user_${userId}`).emit(event, payload);
+    
+    // Also send Web Push if configured
+    if (pushConfig) {
+      pushService.sendToUser(userId, {
+        title: pushConfig.title,
+        body: pushConfig.body,
+        data: { url: pushConfig.url || '/' },
+        icon: '/vite.svg'
+      }).catch(err => console.error('Push Error:', err));
+    }
   }
 };
 

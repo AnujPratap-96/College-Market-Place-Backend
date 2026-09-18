@@ -28,6 +28,9 @@ const envSchema = z.object({
   ALGOLIA_ADMIN_API_KEY: z.string().min(1, 'ALGOLIA_ADMIN_API_KEY is required'),
   
   REDIS_DB_URL: z.string().min(1, 'REDIS_DB_URL is required'),
+  VAPID_PUBLIC_KEY: z.string().optional(),
+  VAPID_PRIVATE_KEY: z.string().optional(),
+  VAPID_SUBJECT: z.string().optional(),
   MISTRAL_API_KEY: z.string().min(1, 'MISTRAL_API_KEY is required'),
 });
 

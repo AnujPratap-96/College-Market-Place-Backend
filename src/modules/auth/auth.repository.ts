@@ -14,6 +14,10 @@ export class AuthRepository {
     return prisma.user.findUnique({ where: { id } });
   }
 
+  async findUserByReferralCode(code: string): Promise<User | null> {
+    return prisma.user.findUnique({ where: { referralCode: code } });
+  }
+
   async createUser(data: {
     email: string;
     phone: string;
@@ -23,6 +27,8 @@ export class AuthRepository {
     branch: string;
     year: string;
     isVerified: boolean;
+    referralCode?: string;
+    referredById?: string;
   }): Promise<User> {
     return prisma.user.create({ data });
   }
