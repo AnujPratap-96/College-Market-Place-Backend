@@ -4,7 +4,7 @@
   "main": "index.js",
   "scripts": {
     "dev": "nodemon src/index.ts",
-    "build": "prisma generate && prisma migrate deploy && tsc",
+    "build": "prisma generate && tsc",
     "start": "node dist/index.js",
     "make-admin": "ts-node src/scripts/make-admin.ts",
     "seed-catalog": "ts-node src/scripts/seed-authentic-catalog.ts"
