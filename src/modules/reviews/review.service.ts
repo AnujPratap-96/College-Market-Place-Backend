@@ -30,14 +30,13 @@ export class ReviewService {
     }
 
     const isBuyer = order.buyerId === reviewerId;
-    const isSeller = order.sellerId === reviewerId;
 
-    if (!isBuyer && !isSeller) {
-      throw new ApiError(403, 'You are not authorized to review this transaction.');
+    if (!isBuyer) {
+      throw new ApiError(403, 'Only buyers can review the transaction and seller.');
     }
 
-    const role: ReviewRole = isBuyer ? ReviewRole.BUYER_TO_SELLER : ReviewRole.SELLER_TO_BUYER;
-    const revieweeId = isBuyer ? order.sellerId : order.buyerId;
+    const role: ReviewRole = ReviewRole.BUYER_TO_SELLER;
+    const revieweeId = order.sellerId;
 
     const existing = await this.repo.findExistingReview(data.orderId, reviewerId, role);
     if (existing) {

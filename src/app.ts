@@ -109,6 +109,8 @@ app.use('/api/admin', adminRoutes);
 app.use('/api/wallet', walletRoutes);
 app.use('/api/orders', orderRoutes);
 app.use('/api/subscriptions', subscriptionRoutes);
+app.use('/api/holidays', holidayRoutes);
+app.use('/api/push', pushRoutes);
 app.use('/api/upload', uploadRoutes);
 app.use('/api/auctions', auctionRoutes);
 app.use('/api/assistant', assistantRoutes);

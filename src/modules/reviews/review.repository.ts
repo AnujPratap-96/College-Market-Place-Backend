@@ -230,11 +230,10 @@ export class ReviewRepository {
   async findPendingReviewsForUser(userId: string) {
     const completedOrders = await prisma.order.findMany({
       where: {
-        OR: [{ buyerId: userId }, { sellerId: userId }],
+        buyerId: userId,
         status: OrderStatus.COMPLETED,
       },
       include: {
-        buyer: { select: { id: true, name: true, profileImage: true } },
         seller: { select: { id: true, name: true, profileImage: true } },
         product: { select: { id: true, title: true, imageUrl: true } },
         reviews: {
@@ -249,15 +248,14 @@ export class ReviewRepository {
     const pending = completedOrders.filter(o => o.reviews.length === 0);
 
     return pending.map(o => {
-      const isBuyer = o.buyerId === userId;
       return {
         orderId: o.id,
         orderNumber: o.orderNumber,
         orderType: o.orderType,
         totalAmount: o.totalAmount,
         completedAt: o.completedAt,
-        targetUser: isBuyer ? o.seller : o.buyer,
-        targetRole: isBuyer ? 'SELLER' : 'BUYER',
+        targetUser: o.seller,
+        targetRole: 'SELLER',
         product: o.product,
       };
     });
