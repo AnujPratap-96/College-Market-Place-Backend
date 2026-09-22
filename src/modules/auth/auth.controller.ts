@@ -4,16 +4,33 @@ import { authService } from './auth.service';
 import { asyncHandler } from '../../utils/asyncHandler';
 import { successResponse } from '../../utils/response';
 
+const isProd = env.NODE_ENV === 'production';
+
+export const getAuthCookieOptions = () => ({
+  httpOnly: true,
+  secure: isProd,
+  sameSite: (isProd ? 'none' : 'lax') as 'none' | 'lax',
+  maxAge: 7 * 24 * 60 * 60 * 1000,
+});
+
+export const getClearAuthCookieOptions = () => ({
+  httpOnly: true,
+  secure: isProd,
+  sameSite: (isProd ? 'none' : 'lax') as 'none' | 'lax',
+});
+
+export const getFlowCookieOptions = (maxAgeMs: number) => ({
+  httpOnly: true,
+  secure: isProd,
+  sameSite: (isProd ? 'none' : 'lax') as 'none' | 'lax',
+  maxAge: maxAgeMs,
+});
+
 export const emailSignup = asyncHandler(async (req: Request, res: Response) => {
   const { email } = req.validated?.body || req.body;
   const result = await authService.requestEmailSignup(email);
 
-  res.cookie('signupToken', result.signupToken, {
-    httpOnly: true,
-    secure: env.NODE_ENV === 'production',
-    sameSite: 'lax',
-    maxAge: 30 * 60 * 1000,
-  });
+  res.cookie('signupToken', result.signupToken, getFlowCookieOptions(30 * 60 * 1000));
 
   return successResponse(res, {
     statusCode: 200,
@@ -27,12 +44,7 @@ export const verifyOtp = asyncHandler(async (req: Request, res: Response) => {
   const { otp } = req.validated?.body || req.body;
   const result = await authService.verifySignupOtp(email, otp);
 
-  res.cookie('signupToken', result.signupToken, {
-    httpOnly: true,
-    secure: env.NODE_ENV === 'production',
-    sameSite: 'lax',
-    maxAge: 30 * 60 * 1000,
-  });
+  res.cookie('signupToken', result.signupToken, getFlowCookieOptions(30 * 60 * 1000));
 
   return successResponse(res, {
     statusCode: 200,
@@ -49,20 +61,14 @@ export const completeSignup = asyncHandler(async (req: Request, res: Response) =
     ...body,
   });
 
-  res.clearCookie('signupToken');
-  res.cookie('authToken', result.authToken, {
-    httpOnly: true,
-    secure: env.NODE_ENV === 'production',
-    sameSite: 'lax',
-    maxAge: 7 * 24 * 60 * 60 * 1000,
-  });
+  res.clearCookie('signupToken', getClearAuthCookieOptions());
+  res.cookie('authToken', result.authToken, getAuthCookieOptions());
 
   return successResponse(res, {
     statusCode: 200,
     message: 'Signup complete! Welcome to College Marketplace.',
     data: {
       user: result.user,
-      token: result.authToken,
     },
   });
 });
@@ -71,25 +77,19 @@ export const login = asyncHandler(async (req: Request, res: Response) => {
   const { email, password } = req.validated?.body || req.body;
   const result = await authService.login(email, password);
 
-  res.cookie('authToken', result.authToken, {
-    httpOnly: true,
-    secure: env.NODE_ENV === 'production',
-    sameSite: 'lax',
-    maxAge: 7 * 24 * 60 * 60 * 1000,
-  });
+  res.cookie('authToken', result.authToken, getAuthCookieOptions());
 
   return successResponse(res, {
     statusCode: 200,
     message: 'Logged in successfully',
     data: {
       user: result.user,
-      token: result.authToken,
     },
   });
 });
 
 export const logout = asyncHandler(async (_req: Request, res: Response) => {
-  res.clearCookie('authToken');
+  res.clearCookie('authToken', getClearAuthCookieOptions());
   return successResponse(res, {
     statusCode: 200,
     message: 'Logged out successfully',
@@ -101,12 +101,7 @@ export const forgotPassword = asyncHandler(async (req: Request, res: Response) =
   const { email } = req.validated?.body || req.body;
   const result = await authService.forgotPassword(email);
 
-  res.cookie('signupToken', result.signupToken, {
-    httpOnly: true,
-    secure: env.NODE_ENV === 'production',
-    sameSite: 'lax',
-    maxAge: 15 * 60 * 1000,
-  });
+  res.cookie('signupToken', result.signupToken, getFlowCookieOptions(15 * 60 * 1000));
 
   return successResponse(res, {
     statusCode: 200,
@@ -120,12 +115,7 @@ export const verifyResetOtp = asyncHandler(async (req: Request, res: Response) =
   const { otp } = req.validated?.body || req.body;
   const result = await authService.verifyResetOtp(email, otp);
 
-  res.cookie('signupToken', result.resetToken, {
-    httpOnly: true,
-    secure: env.NODE_ENV === 'production',
-    sameSite: 'lax',
-    maxAge: 15 * 60 * 1000,
-  });
+  res.cookie('signupToken', result.resetToken, getFlowCookieOptions(15 * 60 * 1000));
 
   return successResponse(res, {
     statusCode: 200,
@@ -138,7 +128,7 @@ export const resetPassword = asyncHandler(async (req: Request, res: Response) =>
   const email = req.email!;
   const { password } = req.validated?.body || req.body;
   const result = await authService.resetPassword(email, password);
-  res.clearCookie('signupToken');
+  res.clearCookie('signupToken', getClearAuthCookieOptions());
 
   return successResponse(res, {
     statusCode: 200,
@@ -162,19 +152,13 @@ export const verifyLoginOtp = asyncHandler(async (req: Request, res: Response) =
   const { email, otp } = req.validated?.body || req.body;
   const result = await authService.verifyLoginOtp(email, otp);
 
-  res.cookie('authToken', result.authToken, {
-    httpOnly: true,
-    secure: env.NODE_ENV === 'production',
-    sameSite: 'lax',
-    maxAge: 7 * 24 * 60 * 60 * 1000,
-  });
+  res.cookie('authToken', result.authToken, getAuthCookieOptions());
 
   return successResponse(res, {
     statusCode: 200,
     message: 'Logged in successfully.',
     data: {
       user: result.user,
-      token: result.authToken,
     },
   });
 });
@@ -184,12 +168,7 @@ export const resendOtp = asyncHandler(async (req: Request, res: Response) => {
   const result = await authService.resendOtp(email, type);
 
   if (result.signupToken) {
-    res.cookie('signupToken', result.signupToken, {
-      httpOnly: true,
-      secure: env.NODE_ENV === 'production',
-      sameSite: 'lax',
-      maxAge: 30 * 60 * 1000,
-    });
+    res.cookie('signupToken', result.signupToken, getFlowCookieOptions(30 * 60 * 1000));
   }
 
   return successResponse(res, {
