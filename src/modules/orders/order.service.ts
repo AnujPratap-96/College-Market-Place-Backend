@@ -450,6 +450,7 @@ export class OrderService {
     const platformFee = Number((product.price * commissionRate).toFixed(2));
     const totalAmount = product.price;
     const orderNumber = `SRV-${Date.now().toString().slice(-6)}-${Math.floor(100 + Math.random() * 900)}`;
+    const pickupOtp = Math.floor(100000 + Math.random() * 900000).toString();
 
     const createdOrder = await prisma.$transaction(
       async (tx) => {
@@ -465,6 +466,7 @@ export class OrderService {
             orderType: OrderType.SERVICE,
             paymentMethod: 'WALLET',
             status: OrderStatus.ESCROW_HELD,
+            pickupOtp,
             disputeReason: notes ? `Notes: ${notes}${preferredTime ? ` (Time: ${preferredTime})` : ''}` : undefined,
           },
           tx
