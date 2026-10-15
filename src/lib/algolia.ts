@@ -15,6 +15,28 @@ if (!algoliaClient) {
 import { PrismaClient } from '@prisma/client';
 const prisma = new PrismaClient();
 
+export const initAlgoliaIndexSettings = async () => {
+  if (!algoliaClient) return;
+  try {
+    await algoliaClient.setSettings({
+      indexName: PRODUCT_INDEX,
+      indexSettings: {
+        attributesForFaceting: [
+          'category',
+          'type',
+          'price',
+        ],
+      },
+    });
+    logger.info('[Algolia] Index faceting settings configured successfully.');
+  } catch (error) {
+    logger.error('[Algolia] Failed to set index settings:', error);
+  }
+};
+
+// Auto-run settings on module load
+initAlgoliaIndexSettings();
+
 export const syncProductToAlgolia = async (product: any) => {
   if (!algoliaClient) return;
   try {
@@ -30,6 +52,7 @@ export const syncProductToAlgolia = async (product: any) => {
 
     const algoliaObject = {
       ...productToSync,
+      category: productToSync.category ? productToSync.category.toLowerCase() : productToSync.category,
       objectID: productToSync.id,
     };
     await algoliaClient.saveObject({
