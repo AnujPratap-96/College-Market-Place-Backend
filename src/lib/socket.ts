@@ -85,13 +85,15 @@ export const initSocket = (httpServer: HttpServer): SocketIOServer => {
       }
     });
 
-    socket.on('join_auction', (auctionId: string) => {
+    socket.on('join_auction', (data: string | { auctionId: string }) => {
+      const auctionId = typeof data === 'string' ? data : data?.auctionId;
       if (auctionId) {
         socket.join(`auction_${auctionId}`);
       }
     });
 
-    socket.on('leave_auction', (auctionId: string) => {
+    socket.on('leave_auction', (data: string | { auctionId: string }) => {
+      const auctionId = typeof data === 'string' ? data : data?.auctionId;
       if (auctionId) {
         socket.leave(`auction_${auctionId}`);
       }

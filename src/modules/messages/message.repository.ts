@@ -115,9 +115,10 @@ export class MessageRepository {
           },
         },
       },
-      orderBy: { createdAt: 'asc' },
+      orderBy: { createdAt: 'desc' },
+      take: 100,
     });
-    return messages.map(normalizeMessage);
+    return messages.reverse().map(normalizeMessage);
   }
 
   async markAsRead(toUserId: string, fromUserId: string) {

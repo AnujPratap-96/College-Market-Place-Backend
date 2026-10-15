@@ -43,11 +43,15 @@ app.use((req: Request, res: Response, next: NextFunction) => {
 app.use(helmet());
 
 // 3. CORS Configuration
-const allowedOrigins = (env.ALLOWED_ORIGINS || 'http://localhost:5173').split(',').map((o) => o.trim());
+const allowedOrigins = (env.ALLOWED_ORIGINS || 'http://localhost:5173')
+  .split(',')
+  .map((o) => o.trim().replace(/\/$/, ''));
+
 app.use(
   cors({
     origin: (origin, callback) => {
-      if (!origin || allowedOrigins.includes(origin)) {
+      const sanitizedOrigin = origin ? origin.replace(/\/$/, '') : origin;
+      if (!sanitizedOrigin || allowedOrigins.includes(sanitizedOrigin)) {
         callback(null, true);
       } else {
         callback(new Error(`CORS: origin ${origin} not allowed`));
@@ -59,9 +63,10 @@ app.use(
 );
 
 // 4. Rate Limiting (Global & Auth)
+// max 2000 per 15 mins prevents false-positive IP-blocks on shared campus Wi-Fi networks
 const globalRateLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
-  max: 300,
+  max: 2000,
   standardHeaders: true,
   legacyHeaders: false,
 });

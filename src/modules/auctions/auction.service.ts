@@ -129,6 +129,7 @@ export class AuctionService {
         { status: 'asc' },
         { endTime: 'asc' },
       ],
+      take: 60,
     });
   }
 

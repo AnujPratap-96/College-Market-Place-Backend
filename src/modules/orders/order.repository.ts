@@ -54,6 +54,7 @@ export class OrderRepository {
         },
       },
       orderBy: { createdAt: 'desc' },
+      take: 100,
     });
   }
 
@@ -72,6 +73,7 @@ export class OrderRepository {
         },
       },
       orderBy: { createdAt: 'desc' },
+      take: 100,
     });
   }
 

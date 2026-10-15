@@ -24,7 +24,8 @@ export class UserService {
       prisma.message.findMany({
         where: { OR: [{ toUserId: userId }, { from: userId }] },
         select: { from: true, toUserId: true, createdAt: true },
-        orderBy: { createdAt: 'asc' },
+        orderBy: { createdAt: 'desc' },
+        take: 100,
       }),
     ]);
 

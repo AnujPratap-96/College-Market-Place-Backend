@@ -65,70 +65,76 @@ export class MessageService {
   }
 
   async getConversationsList(userId: string) {
-    const sentMessages = await prisma.message.findMany({
-      where: { from: userId },
-      select: { toUserId: true },
-    });
-
-    const receivedMessages = await prisma.message.findMany({
-      where: { toUserId: userId },
-      select: { from: true },
-    });
-
-    const userIds = new Set<string>();
-    sentMessages.forEach((m) => userIds.add(m.toUserId));
-    receivedMessages.forEach((m) => userIds.add(m.from));
-
-    return Promise.all(
-      Array.from(userIds).map(async (otherUserId) => {
-        const user = await prisma.user.findUnique({
-          where: { id: otherUserId },
+    // 1. Fetch recent messages involving this user (ordered desc)
+    const recentMessages = await prisma.message.findMany({
+      where: {
+        OR: [{ from: userId }, { toUserId: userId }],
+      },
+      orderBy: { createdAt: 'desc' },
+      take: 300,
+      include: {
+        product: {
           select: {
             id: true,
-            name: true,
-            college: true,
-            profileImage: true,
+            title: true,
+            price: true,
+            imageUrl: true,
+            type: true,
           },
-        });
+        },
+      },
+    });
 
-        const lastMessage = await prisma.message.findFirst({
-          where: {
-            OR: [
-              { from: userId, toUserId: otherUserId },
-              { from: otherUserId, toUserId: userId },
-            ],
-          },
-          include: {
-            product: {
-              select: {
-                id: true,
-                title: true,
-                price: true,
-                imageUrl: true,
-                type: true,
-              },
-            },
-          },
-          orderBy: { createdAt: 'desc' },
-        });
+    // 2. Identify unique conversation partners & their latest message & unread count
+    const conversationMap = new Map<
+      string,
+      { lastMessage: any; unreadCount: number }
+    >();
 
-        const unreadCount = await prisma.message.count({
-          where: {
-            from: otherUserId,
-            toUserId: userId,
-            isRead: false,
-          },
-        });
+    for (const msg of recentMessages) {
+      const otherId = msg.from === userId ? msg.toUserId : msg.from;
+      if (!otherId) continue;
 
-        return {
-          otherUser: user,
-          lastMessage: lastMessage
-            ? { ...lastMessage, senderId: lastMessage.from, receiverId: lastMessage.toUserId }
-            : lastMessage,
-          unreadCount,
-        };
-      })
-    );
+      if (!conversationMap.has(otherId)) {
+        conversationMap.set(otherId, {
+          lastMessage: msg,
+          unreadCount: msg.toUserId === userId && !msg.isRead ? 1 : 0,
+        });
+      } else {
+        if (msg.toUserId === userId && !msg.isRead) {
+          conversationMap.get(otherId)!.unreadCount += 1;
+        }
+      }
+    }
+
+    const otherUserIds = Array.from(conversationMap.keys());
+    if (otherUserIds.length === 0) return [];
+
+    // 3. Batch fetch all partner profiles in ONE query
+    const users = await prisma.user.findMany({
+      where: { id: { in: otherUserIds } },
+      select: {
+        id: true,
+        name: true,
+        college: true,
+        profileImage: true,
+      },
+    });
+
+    const userMap = new Map(users.map((u) => [u.id, u]));
+
+    // 4. Assemble the response in order of most recent interaction
+    return otherUserIds.map((otherId) => {
+      const conv = conversationMap.get(otherId)!;
+      const lastMsg = conv.lastMessage;
+      return {
+        otherUser: userMap.get(otherId) || null,
+        lastMessage: lastMsg
+          ? { ...lastMsg, senderId: lastMsg.from, receiverId: lastMsg.toUserId }
+          : null,
+        unreadCount: conv.unreadCount,
+      };
+    });
   }
 
   async markAsRead(userId: string, fromUserId: string) {
