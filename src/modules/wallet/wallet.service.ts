@@ -7,6 +7,7 @@ import crypto from 'crypto';
 import Razorpay from 'razorpay';
 import { getMinWithdrawalAmount, settingsService } from '../admin/settings.service';
 import { domainEvents } from '../../lib/events';
+import { addMoney, subtractMoney, roundMoney, fromPaise } from '../../utils/money';
 
 export class WalletService {
   constructor(private repo: WalletRepository = walletRepository) {}
@@ -87,23 +88,25 @@ export class WalletService {
 
     const result = await prisma.$transaction(
       async (tx) => {
-        const senderWallet = await this.repo.getOrCreateWallet(fromUserId, tx);
+        const { senderWallet, recipientWallet } = await this.repo.getWalletsForTransfer(
+          fromUserId,
+          recipientUserId,
+          tx
+        );
         if (senderWallet.balance < amount) {
           throw new ApiError(400, `Insufficient wallet balance. Available: ₹${senderWallet.balance.toFixed(2)}`);
         }
 
-        const recipientWallet = await this.repo.getOrCreateWallet(targetUser.id, tx);
-
         // 1. Deduct from sender
         const senderBefore = senderWallet.balance;
-        const senderAfter = senderBefore - amount;
+        const senderAfter = subtractMoney(senderBefore, amount);
         await this.repo.updateBalances(senderWallet.id, senderAfter, senderWallet.escrowBalance, tx);
 
         const transferRef = `TRF-${Date.now()}`;
         await this.repo.createLedgerEntry(
           {
             walletId: senderWallet.id,
-            amount,
+            amount: roundMoney(amount),
             type: LedgerType.DEBIT,
             balanceBefore: senderBefore,
             balanceAfter: senderAfter,
@@ -118,7 +121,7 @@ export class WalletService {
 
         // 2. Credit to recipient
         const recipientBefore = recipientWallet.balance;
-        const recipientAfter = recipientBefore + amount;
+        const recipientAfter = addMoney(recipientBefore, amount);
         await this.repo.updateBalances(recipientWallet.id, recipientAfter, recipientWallet.escrowBalance, tx);
 
         await this.repo.createLedgerEntry(
@@ -221,7 +224,7 @@ export class WalletService {
   }
   async holdEscrow(buyerId: string, amount: number, orderId: string, tx: Prisma.TransactionClient) {
     await this.triggerFirstTransactionBonus(buyerId, tx);
-    const wallet = await this.repo.getOrCreateWallet(buyerId, tx);
+    const wallet = await this.repo.getOrCreateWalletForUpdate(buyerId, tx);
 
     if (wallet.balance < amount) {
       throw new ApiError(
@@ -231,16 +234,16 @@ export class WalletService {
     }
 
     const balanceBefore = wallet.balance;
-    const balanceAfter = balanceBefore - amount;
+    const balanceAfter = subtractMoney(balanceBefore, amount);
     const escrowBefore = wallet.escrowBalance;
-    const escrowAfter = escrowBefore + amount;
+    const escrowAfter = addMoney(escrowBefore, amount);
 
     await this.repo.updateBalances(wallet.id, balanceAfter, escrowAfter, tx);
 
     await this.repo.createLedgerEntry(
       {
         walletId: wallet.id,
-        amount,
+        amount: roundMoney(amount),
         type: LedgerType.HOLD,
         balanceBefore,
         balanceAfter,
@@ -264,18 +267,18 @@ export class WalletService {
     orderId: string,
     tx: Prisma.TransactionClient
   ) {
-    const buyerWallet = await this.repo.getOrCreateWallet(buyerId, tx);
-    const sellerWallet = await this.repo.getOrCreateWallet(sellerId, tx);
+    const { senderWallet: buyerWallet, recipientWallet: sellerWallet } =
+      await this.repo.getWalletsForTransfer(buyerId, sellerId, tx);
 
     const buyerEscrowBefore = buyerWallet.escrowBalance;
-    const buyerEscrowAfter = Math.max(0, buyerEscrowBefore - totalAmount);
+    const buyerEscrowAfter = Math.max(0, subtractMoney(buyerEscrowBefore, totalAmount));
 
     // 1. Release from buyer's escrow
     await this.repo.updateBalances(buyerWallet.id, buyerWallet.balance, buyerEscrowAfter, tx);
     await this.repo.createLedgerEntry(
       {
         walletId: buyerWallet.id,
-        amount: totalAmount,
+        amount: roundMoney(totalAmount),
         type: LedgerType.RELEASE,
         balanceBefore: buyerWallet.balance,
         balanceAfter: buyerWallet.balance,
@@ -289,9 +292,9 @@ export class WalletService {
     );
 
     // 2. Credit seller with payout (totalAmount - platformFee)
-    const payoutAmount = Math.max(0, totalAmount - platformFee);
+    const payoutAmount = Math.max(0, subtractMoney(totalAmount, platformFee));
     const sellerBalanceBefore = sellerWallet.balance;
-    const sellerBalanceAfter = sellerBalanceBefore + payoutAmount;
+    const sellerBalanceAfter = addMoney(sellerBalanceBefore, payoutAmount);
 
     await this.repo.updateBalances(sellerWallet.id, sellerBalanceAfter, sellerWallet.escrowBalance, tx);
     await this.repo.createLedgerEntry(
@@ -319,18 +322,18 @@ export class WalletService {
     orderId: string,
     tx: Prisma.TransactionClient
   ) {
-    const buyerWallet = await this.repo.getOrCreateWallet(buyerId, tx);
-    const sellerWallet = await this.repo.getOrCreateWallet(sellerId, tx);
+    const { senderWallet: buyerWallet, recipientWallet: sellerWallet } =
+      await this.repo.getWalletsForTransfer(buyerId, sellerId, tx);
 
     const buyerEscrowBefore = buyerWallet.escrowBalance;
-    const buyerEscrowAfter = Math.max(0, buyerEscrowBefore - rentalFee);
+    const buyerEscrowAfter = Math.max(0, subtractMoney(buyerEscrowBefore, rentalFee));
 
     // 1. Release rental fee from buyer's escrow (security deposit remains held in escrow!)
     await this.repo.updateBalances(buyerWallet.id, buyerWallet.balance, buyerEscrowAfter, tx);
     await this.repo.createLedgerEntry(
       {
         walletId: buyerWallet.id,
-        amount: rentalFee,
+        amount: roundMoney(rentalFee),
         type: LedgerType.RELEASE,
         balanceBefore: buyerWallet.balance,
         balanceAfter: buyerWallet.balance,
@@ -344,9 +347,9 @@ export class WalletService {
     );
 
     // 2. Credit seller with payout (rentalFee - platformFee)
-    const payoutAmount = Math.max(0, rentalFee - platformFee);
+    const payoutAmount = Math.max(0, subtractMoney(rentalFee, platformFee));
     const sellerBalanceBefore = sellerWallet.balance;
-    const sellerBalanceAfter = sellerBalanceBefore + payoutAmount;
+    const sellerBalanceAfter = addMoney(sellerBalanceBefore, payoutAmount);
 
     await this.repo.updateBalances(sellerWallet.id, sellerBalanceAfter, sellerWallet.escrowBalance, tx);
     await this.repo.createLedgerEntry(
@@ -372,18 +375,18 @@ export class WalletService {
     orderId: string,
     tx: Prisma.TransactionClient
   ) {
-    const buyerWallet = await this.repo.getOrCreateWallet(buyerId, tx);
+    const buyerWallet = await this.repo.getOrCreateWalletForUpdate(buyerId, tx);
 
     const escrowBefore = buyerWallet.escrowBalance;
-    const escrowAfter = Math.max(0, escrowBefore - depositAmount);
+    const escrowAfter = Math.max(0, subtractMoney(escrowBefore, depositAmount));
     const balanceBefore = buyerWallet.balance;
-    const balanceAfter = balanceBefore + depositAmount;
+    const balanceAfter = addMoney(balanceBefore, depositAmount);
 
     await this.repo.updateBalances(buyerWallet.id, balanceAfter, escrowAfter, tx);
     await this.repo.createLedgerEntry(
       {
         walletId: buyerWallet.id,
-        amount: depositAmount,
+        amount: roundMoney(depositAmount),
         type: LedgerType.REFUND,
         balanceBefore,
         balanceAfter,
@@ -404,17 +407,17 @@ export class WalletService {
     orderId: string,
     tx: Prisma.TransactionClient
   ) {
-    const buyerWallet = await this.repo.getOrCreateWallet(buyerId, tx);
-    const sellerWallet = await this.repo.getOrCreateWallet(sellerId, tx);
+    const { senderWallet: buyerWallet, recipientWallet: sellerWallet } =
+      await this.repo.getWalletsForTransfer(buyerId, sellerId, tx);
 
     const escrowBefore = buyerWallet.escrowBalance;
-    const escrowAfter = Math.max(0, escrowBefore - depositAmount);
+    const escrowAfter = Math.max(0, subtractMoney(escrowBefore, depositAmount));
 
     await this.repo.updateBalances(buyerWallet.id, buyerWallet.balance, escrowAfter, tx);
     await this.repo.createLedgerEntry(
       {
         walletId: buyerWallet.id,
-        amount: depositAmount,
+        amount: roundMoney(depositAmount),
         type: LedgerType.RELEASE,
         balanceBefore: buyerWallet.balance,
         balanceAfter: buyerWallet.balance,
@@ -428,13 +431,13 @@ export class WalletService {
     );
 
     const sellerBalanceBefore = sellerWallet.balance;
-    const sellerBalanceAfter = sellerBalanceBefore + depositAmount;
+    const sellerBalanceAfter = addMoney(sellerBalanceBefore, depositAmount);
 
     await this.repo.updateBalances(sellerWallet.id, sellerBalanceAfter, sellerWallet.escrowBalance, tx);
     await this.repo.createLedgerEntry(
       {
         walletId: sellerWallet.id,
-        amount: depositAmount,
+        amount: roundMoney(depositAmount),
         type: LedgerType.CREDIT,
         balanceBefore: sellerBalanceBefore,
         balanceAfter: sellerBalanceAfter,
@@ -449,18 +452,18 @@ export class WalletService {
   }
 
   async refundEscrow(buyerId: string, amount: number, orderId: string, tx: Prisma.TransactionClient) {
-    const buyerWallet = await this.repo.getOrCreateWallet(buyerId, tx);
+    const buyerWallet = await this.repo.getOrCreateWalletForUpdate(buyerId, tx);
 
     const escrowBefore = buyerWallet.escrowBalance;
-    const escrowAfter = Math.max(0, escrowBefore - amount);
+    const escrowAfter = Math.max(0, subtractMoney(escrowBefore, amount));
     const balanceBefore = buyerWallet.balance;
-    const balanceAfter = balanceBefore + amount;
+    const balanceAfter = addMoney(balanceBefore, amount);
 
     await this.repo.updateBalances(buyerWallet.id, balanceAfter, escrowAfter, tx);
     await this.repo.createLedgerEntry(
       {
         walletId: buyerWallet.id,
-        amount,
+        amount: roundMoney(amount),
         type: LedgerType.REFUND,
         balanceBefore,
         balanceAfter,
@@ -481,7 +484,7 @@ export class WalletService {
     tx: Prisma.TransactionClient
   ) {
     await this.triggerFirstTransactionBonus(bidderId, tx);
-    const wallet = await this.repo.getOrCreateWallet(bidderId, tx);
+    const wallet = await this.repo.getOrCreateWalletForUpdate(bidderId, tx);
 
     if (wallet.balance < amount) {
       throw new ApiError(
@@ -491,16 +494,16 @@ export class WalletService {
     }
 
     const balanceBefore = wallet.balance;
-    const balanceAfter = balanceBefore - amount;
+    const balanceAfter = subtractMoney(balanceBefore, amount);
     const escrowBefore = wallet.escrowBalance;
-    const escrowAfter = escrowBefore + amount;
+    const escrowAfter = addMoney(escrowBefore, amount);
 
     await this.repo.updateBalances(wallet.id, balanceAfter, escrowAfter, tx);
 
     await this.repo.createLedgerEntry(
       {
         walletId: wallet.id,
-        amount,
+        amount: roundMoney(amount),
         type: LedgerType.HOLD,
         balanceBefore,
         balanceAfter,
@@ -523,19 +526,19 @@ export class WalletService {
     reason: string,
     tx: Prisma.TransactionClient
   ) {
-    const wallet = await this.repo.getOrCreateWallet(bidderId, tx);
+    const wallet = await this.repo.getOrCreateWalletForUpdate(bidderId, tx);
 
     const escrowBefore = wallet.escrowBalance;
-    const escrowAfter = Math.max(0, escrowBefore - amount);
+    const escrowAfter = Math.max(0, subtractMoney(escrowBefore, amount));
     const balanceBefore = wallet.balance;
-    const balanceAfter = balanceBefore + amount;
+    const balanceAfter = addMoney(balanceBefore, amount);
 
     await this.repo.updateBalances(wallet.id, balanceAfter, escrowAfter, tx);
 
     await this.repo.createLedgerEntry(
       {
         walletId: wallet.id,
-        amount,
+        amount: roundMoney(amount),
         type: LedgerType.REFUND,
         balanceBefore,
         balanceAfter,
@@ -557,7 +560,7 @@ export class WalletService {
     subscriptionId: string,
     tx: Prisma.TransactionClient
   ) {
-    const wallet = await this.repo.getOrCreateWallet(subscriberId, tx);
+    const wallet = await this.repo.getOrCreateWalletForUpdate(subscriberId, tx);
 
     if (wallet.balance < amount) {
       throw new ApiError(
@@ -567,15 +570,15 @@ export class WalletService {
     }
 
     const balanceBefore = wallet.balance;
-    const balanceAfter = balanceBefore - amount;
+    const balanceAfter = subtractMoney(balanceBefore, amount);
     const escrowBefore = wallet.escrowBalance;
-    const escrowAfter = escrowBefore + amount;
+    const escrowAfter = addMoney(escrowBefore, amount);
 
     await this.repo.updateBalances(wallet.id, balanceAfter, escrowAfter, tx);
     await this.repo.createLedgerEntry(
       {
         walletId: wallet.id,
-        amount,
+        amount: roundMoney(amount),
         type: LedgerType.HOLD,
         balanceBefore,
         balanceAfter,
@@ -598,18 +601,18 @@ export class WalletService {
     vacationDays: number,
     tx: Prisma.TransactionClient
   ) {
-    const wallet = await this.repo.getOrCreateWallet(subscriberId, tx);
+    const wallet = await this.repo.getOrCreateWalletForUpdate(subscriberId, tx);
 
     const escrowBefore = wallet.escrowBalance;
-    const escrowAfter = Math.max(0, escrowBefore - refundAmount);
+    const escrowAfter = Math.max(0, subtractMoney(escrowBefore, refundAmount));
     const balanceBefore = wallet.balance;
-    const balanceAfter = balanceBefore + refundAmount;
+    const balanceAfter = addMoney(balanceBefore, refundAmount);
 
     await this.repo.updateBalances(wallet.id, balanceAfter, escrowAfter, tx);
     await this.repo.createLedgerEntry(
       {
         walletId: wallet.id,
-        amount: refundAmount,
+        amount: roundMoney(refundAmount),
         type: LedgerType.REFUND,
         balanceBefore,
         balanceAfter,
@@ -744,13 +747,13 @@ export class WalletService {
 
     return prisma.$transaction(
       async (tx) => {
-        const wallet = await this.repo.getOrCreateWallet(userId, tx);
+        const wallet = await this.repo.getOrCreateWalletForUpdate(userId, tx);
         if (wallet.balance < amount) {
           throw new ApiError(400, `Insufficient wallet balance. Available: ₹${wallet.balance.toFixed(2)}`);
         }
 
         const balanceBefore = wallet.balance;
-        const balanceAfter = balanceBefore - amount;
+        const balanceAfter = subtractMoney(balanceBefore, amount);
 
         const updatedWallet = await this.repo.updateBalances(
           wallet.id,
@@ -763,7 +766,7 @@ export class WalletService {
         const ledger = await this.repo.createLedgerEntry(
           {
             walletId: wallet.id,
-            amount,
+            amount: roundMoney(amount),
             type: LedgerType.DEBIT,
             balanceBefore,
             balanceAfter,
@@ -952,8 +955,9 @@ export class WalletService {
       if (!topup) return { handled: true, duplicate: false, notFound: true };
       if (topup.status === 'PAID') return { handled: true, duplicate: true };
       
-      const wallet = await this.repo.getOrCreateWallet(topup.userId, tx as any);
-      const newBalance = wallet.balance + topup.amountPaise / 100;
+      const wallet = await this.repo.getOrCreateWalletForUpdate(topup.userId, tx as any);
+      const topupAmount = fromPaise(topup.amountPaise);
+      const newBalance = addMoney(wallet.balance, topupAmount);
       const updatedWallet = await tx.wallet.update({
         where: { id: wallet.id },
         data: { balance: newBalance }
@@ -961,7 +965,7 @@ export class WalletService {
       const ledger = await tx.walletLedger.create({
         data: {
           walletId: wallet.id,
-          amount: topup.amountPaise / 100,
+          amount: topupAmount,
           type: LedgerType.CREDIT,
           balanceBefore: wallet.balance,
           balanceAfter: newBalance,

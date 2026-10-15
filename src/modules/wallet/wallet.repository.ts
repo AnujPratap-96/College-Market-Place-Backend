@@ -1,5 +1,6 @@
 import prisma from '../../lib/prisma';
 import { Wallet, WalletLedger, LedgerType, Prisma } from '@prisma/client';
+import { roundMoney } from '../../utils/money';
 
 export class WalletRepository {
   async getOrCreateWallet(userId: string, tx?: Prisma.TransactionClient): Promise<Wallet> {
@@ -20,6 +21,51 @@ export class WalletRepository {
     }
 
     return wallet;
+  }
+
+  /**
+   * Acquires a row-level exclusive lock (SELECT ... FOR UPDATE) on the user's wallet
+   * within an active transaction. Prevents concurrent double-spending.
+   */
+  async getOrCreateWalletForUpdate(userId: string, tx: Prisma.TransactionClient): Promise<Wallet> {
+    await this.getOrCreateWallet(userId, tx);
+
+    const lockedWallets = await tx.$queryRaw<Wallet[]>`
+      SELECT * FROM "Wallet" WHERE "userId" = ${userId} FOR UPDATE
+    `;
+
+    if (!lockedWallets || lockedWallets.length === 0) {
+      throw new Error(`Unable to acquire row lock on wallet for user ${userId}`);
+    }
+
+    return lockedWallets[0];
+  }
+
+  /**
+   * Acquires row-level exclusive locks on two wallets in deterministic alphabetical order
+   * to strictly avoid database deadlocks during peer-to-peer transfers.
+   */
+  async getWalletsForTransfer(
+    fromUserId: string,
+    toUserId: string,
+    tx: Prisma.TransactionClient
+  ): Promise<{ senderWallet: Wallet; recipientWallet: Wallet }> {
+    const [firstId, secondId] = [fromUserId, toUserId].sort();
+
+    await this.getOrCreateWallet(firstId, tx);
+    await this.getOrCreateWallet(secondId, tx);
+
+    const lockedFirst = await tx.$queryRaw<Wallet[]>`
+      SELECT * FROM "Wallet" WHERE "userId" = ${firstId} FOR UPDATE
+    `;
+    const lockedSecond = await tx.$queryRaw<Wallet[]>`
+      SELECT * FROM "Wallet" WHERE "userId" = ${secondId} FOR UPDATE
+    `;
+
+    const senderWallet = firstId === fromUserId ? lockedFirst[0] : lockedSecond[0];
+    const recipientWallet = firstId === toUserId ? lockedFirst[0] : lockedSecond[0];
+
+    return { senderWallet, recipientWallet };
   }
 
   async findWalletByUserId(userId: string, tx?: Prisma.TransactionClient): Promise<Wallet | null> {
@@ -65,8 +111,8 @@ export class WalletRepository {
     return client.wallet.update({
       where: { id: walletId },
       data: {
-        balance,
-        escrowBalance,
+        balance: roundMoney(Math.max(0, balance)),
+        escrowBalance: roundMoney(Math.max(0, escrowBalance)),
       },
     });
   }
