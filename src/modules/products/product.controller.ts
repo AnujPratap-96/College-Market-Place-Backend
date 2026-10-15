@@ -3,12 +3,15 @@ import { productService } from './product.service';
 import { asyncHandler } from '../../utils/asyncHandler';
 import { successResponse } from '../../utils/response';
 
-export const getAllProducts = asyncHandler(async (_req: Request, res: Response) => {
-  const products = await productService.getAllAvailable();
+export const getAllProducts = asyncHandler(async (req: Request, res: Response) => {
+  const query = req.validated?.query || req.query;
+  const page = parseInt(query.page as string) || 1;
+  const limit = parseInt(query.limit as string) || 12;
+  const result = await productService.getAllAvailable({ page, limit });
   return successResponse(res, {
     statusCode: 200,
     message: 'Products retrieved successfully',
-    data: { products },
+    data: result,
   });
 });
 
@@ -38,11 +41,14 @@ export const getFilteredProducts = asyncHandler(async (req: Request, res: Respon
 
 export const getMyProducts = asyncHandler(async (req: Request, res: Response) => {
   const userId = req.userId!;
-  const products = await productService.getMyProducts(userId);
+  const query = req.validated?.query || req.query;
+  const page = parseInt(query.page as string) || 1;
+  const limit = parseInt(query.limit as string) || 12;
+  const result = await productService.getMyProducts(userId, { page, limit });
   return successResponse(res, {
     statusCode: 200,
     message: 'My products retrieved successfully',
-    data: { products },
+    data: result,
   });
 });
 

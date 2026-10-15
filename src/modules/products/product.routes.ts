@@ -19,13 +19,14 @@ import {
   productIdParamSchema,
   filterProductsSchema,
   reportProductSchema,
+  productPaginationQuerySchema,
 } from './product.schema';
 
 const router = Router();
 
-router.get('/', getAllProducts);
+router.get('/', validate(productPaginationQuerySchema), getAllProducts);
 router.get('/filters', validate(filterProductsSchema), getFilteredProducts);
-router.get('/my-products', requireAuth, getMyProducts);
+router.get('/my-products', requireAuth, validate(productPaginationQuerySchema), getMyProducts);
 router.post('/ai-estimate-listing', requireAuth, estimateProductListing);
 router.get('/:id', validate(productIdParamSchema), getProduct);
 

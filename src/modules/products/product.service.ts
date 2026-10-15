@@ -23,8 +23,8 @@ function checkContainsProhibitedKeywords(text?: string | null): boolean {
 export class ProductService {
   constructor(private repo: ProductRepository = productRepository) {}
 
-  async getAllAvailable() {
-    return this.repo.findAllAvailable();
+  async getAllAvailable(options?: { page?: number; limit?: number }) {
+    return this.repo.findAllAvailable(options);
   }
 
   async getProductById(id: string) {
@@ -55,8 +55,8 @@ export class ProductService {
     return this.repo.findFiltered(filterConditions);
   }
 
-  async getMyProducts(ownerId: string) {
-    return this.repo.findByOwner(ownerId);
+  async getMyProducts(ownerId: string, options?: { page?: number; limit?: number }) {
+    return this.repo.findByOwner(ownerId, options);
   }
 
   async createProduct(ownerId: string, data: {

@@ -62,3 +62,10 @@ export const reportProductSchema = requestSchema({
     details: z.string().trim().optional(),
   }),
 });
+
+export const productPaginationQuerySchema = requestSchema({
+  query: z.object({
+    page: z.string().optional(),
+    limit: z.string().optional(),
+  }),
+});

@@ -2,23 +2,46 @@ import prisma from '../../lib/prisma';
 import { Product, ProductStatus, Prisma, ProductReport } from '@prisma/client';
 
 export class ProductRepository {
-  async findAllAvailable(): Promise<any[]> {
-    return prisma.product.findMany({
-      where: { status: 'AVAILABLE', isFlagged: false },
-      include: {
-        owner: {
-          select: {
-            id: true,
-            name: true,
-            email: true,
-            college: true,
-            branch: true,
-            profileImage: true,
+  async findAllAvailable(options?: { page?: number; limit?: number }): Promise<{ products: any[]; pagination: { total: number; page: number; limit: number; totalPages: number; hasMore: boolean } }> {
+    const page = options?.page && options.page > 0 ? options.page : 1;
+    const limit = options?.limit && options.limit > 0 ? options.limit : 12;
+    const skip = (page - 1) * limit;
+
+    const where: Prisma.ProductWhereInput = { status: 'AVAILABLE', isFlagged: false };
+
+    const [products, total] = await Promise.all([
+      prisma.product.findMany({
+        where,
+        include: {
+          owner: {
+            select: {
+              id: true,
+              name: true,
+              email: true,
+              college: true,
+              branch: true,
+              profileImage: true,
+            },
           },
         },
+        orderBy: { createdAt: 'desc' },
+        skip,
+        take: limit,
+      }),
+      prisma.product.count({ where }),
+    ]);
+
+    const totalPages = Math.ceil(total / limit);
+    return {
+      products,
+      pagination: {
+        total,
+        page,
+        limit,
+        totalPages,
+        hasMore: page < totalPages,
       },
-      orderBy: { createdAt: 'desc' },
-    });
+    };
   }
 
   async findById(id: string): Promise<any | null> {
@@ -61,11 +84,34 @@ export class ProductRepository {
     });
   }
 
-  async findByOwner(ownerId: string): Promise<Product[]> {
-    return prisma.product.findMany({
-      where: { ownerId },
-      orderBy: { createdAt: 'desc' },
-    });
+  async findByOwner(ownerId: string, options?: { page?: number; limit?: number }): Promise<{ products: Product[]; pagination: { total: number; page: number; limit: number; totalPages: number; hasMore: boolean } }> {
+    const page = options?.page && options.page > 0 ? options.page : 1;
+    const limit = options?.limit && options.limit > 0 ? options.limit : 12;
+    const skip = (page - 1) * limit;
+
+    const where: Prisma.ProductWhereInput = { ownerId };
+
+    const [products, total] = await Promise.all([
+      prisma.product.findMany({
+        where,
+        orderBy: { createdAt: 'desc' },
+        skip,
+        take: limit,
+      }),
+      prisma.product.count({ where }),
+    ]);
+
+    const totalPages = Math.ceil(total / limit);
+    return {
+      products,
+      pagination: {
+        total,
+        page,
+        limit,
+        totalPages,
+        hasMore: page < totalPages,
+      },
+    };
   }
 
   async create(data: Prisma.ProductUncheckedCreateInput): Promise<Product> {
