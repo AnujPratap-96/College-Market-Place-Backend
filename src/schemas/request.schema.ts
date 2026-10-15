@@ -10,7 +10,7 @@ export const requestSchema = ({
   query?: ZodTypeAny;
 }) =>
   z.object({
-    body: body ?? z.any(),
-    params: params ?? z.any(),
-    query: query ?? z.any(),
+    body: body ?? z.any().optional(),
+    params: params ?? z.any().optional(),
+    query: query ?? z.any().optional(),
   });
