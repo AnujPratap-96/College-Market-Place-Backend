@@ -233,6 +233,10 @@ export class AuctionService {
           throw new ApiError(400, 'Sellers cannot bid on their own auctions');
         }
 
+        if (auction.currentBidderId === bidderId) {
+          throw new ApiError(400, 'You are already the leading bidder for this auction.');
+        }
+
         if (auction._count.bids === 0) {
           if (amount < auction.startingBid) {
             throw new ApiError(400, `First bid must be at least starting bid of ₹${auction.startingBid.toFixed(2)}`);
@@ -320,12 +324,16 @@ export class AuctionService {
     ).then((result) => {
       emitToAuction(auctionId, 'new_bid', {
         auctionId,
+        bid: result.bid,
         bidId: result.bid.id,
         amount: result.bid.amount,
         bidder: result.bid.bidder,
+        currentBid: result.auction.currentBid,
+        currentBidder: result.auction.currentBidder,
+        currentBidderId: result.auction.currentBidderId,
         endTime: result.newEndTime,
         isExtended: result.isExtended,
-        currentBid: result.auction.currentBid,
+        status: result.auction.status,
       });
 
       if (result.prevBidderId && result.prevBidderId !== bidderId) {
