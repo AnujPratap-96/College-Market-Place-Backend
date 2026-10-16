@@ -68,6 +68,7 @@ export const completeSignup = asyncHandler(async (req: Request, res: Response) =
     statusCode: 200,
     message: 'Signup complete! Welcome to College Marketplace.',
     data: {
+      token: result.authToken,
       user: result.user,
     },
   });
@@ -83,6 +84,7 @@ export const login = asyncHandler(async (req: Request, res: Response) => {
     statusCode: 200,
     message: 'Logged in successfully',
     data: {
+      token: result.authToken,
       user: result.user,
     },
   });
@@ -158,6 +160,7 @@ export const verifyLoginOtp = asyncHandler(async (req: Request, res: Response) =
     statusCode: 200,
     message: 'Logged in successfully.',
     data: {
+      token: result.authToken,
       user: result.user,
     },
   });
