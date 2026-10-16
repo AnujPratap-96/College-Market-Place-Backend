@@ -1,7 +1,7 @@
 import { describe, it, expect, vi } from 'vitest';
 import errorMiddleware from './error.middleware';
 import { ApiError } from '../utils/api-error';
-import { ZodError } from 'zod';
+import { z, ZodError } from 'zod';
 import { Prisma } from '@prisma/client';
 import type { Request, Response, NextFunction } from 'express';
 
@@ -40,17 +40,12 @@ describe('Error Middleware (Sanitization & Error Mapping)', () => {
 
   it('maps ZodError to 400 Validation Error without leaking internal stack', () => {
     const { req, res, next } = createMockReqRes();
-    const zodError = new ZodError([
-      {
-        code: 'too_small',
-        minimum: 5,
-        type: 'string',
-        inclusive: true,
-        exact: false,
-        message: 'Password must be at least 5 characters',
-        path: ['password'],
-      },
-    ]);
+    const testSchema = z.object({
+      password: z.string().min(5, 'Password must be at least 5 characters'),
+    });
+    const result = testSchema.safeParse({ password: '123' });
+    if (result.success) throw new Error('Expected validation failure');
+    const zodError = result.error;
 
     errorMiddleware(zodError, req, res, next);
 
