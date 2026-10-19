@@ -183,6 +183,31 @@ export class ProductService {
       throw new ApiError(403, 'Not authorized to delete this product.');
     }
 
+    const historyCounts = await prisma.product.findUnique({
+      where: { id },
+      select: {
+        _count: {
+          select: {
+            orders: true,
+            requests: true,
+            subscriptions: true,
+          },
+        },
+      },
+    });
+
+    if (
+      historyCounts &&
+      (historyCounts._count.orders > 0 ||
+        historyCounts._count.requests > 0 ||
+        historyCounts._count.subscriptions > 0)
+    ) {
+      throw new ApiError(
+        400,
+        'Cannot permanently delete a listing that has associated orders or requests. Please mark it as Sold instead.'
+      );
+    }
+
     const existingAuction = await prisma.auction.findUnique({
       where: { productId: id },
     });

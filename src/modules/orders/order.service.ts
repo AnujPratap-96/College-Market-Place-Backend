@@ -125,6 +125,10 @@ export class OrderService {
       throw new ApiError(403, 'Only the seller can verify delivery OTP and collect funds.');
     }
 
+    if (order.paymentMethod === 'WALLET' && order.status !== OrderStatus.ESCROW_HELD) {
+      throw new ApiError(400, `Cannot verify handover for order '${order.orderNumber}': wallet escrow has not been funded.`);
+    }
+
     if (order.status !== OrderStatus.ESCROW_HELD && order.status !== OrderStatus.PENDING_PAYMENT) {
       throw new ApiError(400, `Cannot verify handover for an order in '${order.status}' status.`);
     }
@@ -365,7 +369,8 @@ export class OrderService {
   }
 
   async getMySales(sellerId: string) {
-    return this.repo.findOrdersBySeller(sellerId);
+    const orders = await this.repo.findOrdersBySeller(sellerId);
+    return orders.map((o) => ({ ...o, pickupOtp: null }));
   }
 
   async getOrderById(userId: string, orderId: string) {
@@ -376,6 +381,10 @@ export class OrderService {
 
     if (order.buyerId !== userId && order.sellerId !== userId) {
       throw new ApiError(403, 'Not authorized to view this order.');
+    }
+
+    if (order.sellerId === userId && order.buyerId !== userId) {
+      return { ...order, pickupOtp: null };
     }
 
     return order;

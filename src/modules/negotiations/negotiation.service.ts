@@ -217,8 +217,12 @@ export class NegotiationService {
       where: { userId: offer.buyerId },
     });
 
-    const hasFunds = buyerWallet && buyerWallet.balance >= offer.offeredPrice;
-    const orderStatus = hasFunds ? OrderStatus.ESCROW_HELD : OrderStatus.PENDING_PAYMENT;
+    if (!buyerWallet || buyerWallet.balance < offer.offeredPrice) {
+      throw new ApiError(
+        400,
+        `Buyer has insufficient wallet balance. Available: ₹${(buyerWallet?.balance || 0).toFixed(2)}, Required: ₹${offer.offeredPrice.toFixed(2)}. The buyer must top up before this offer can be accepted.`
+      );
+    }
 
     const result = await prisma.$transaction(async (tx) => {
       const order = await tx.order.create({
@@ -231,7 +235,7 @@ export class NegotiationService {
           platformFee,
           totalAmount: offer.offeredPrice,
           orderType: OrderType.PURCHASE,
-          status: orderStatus,
+          status: OrderStatus.ESCROW_HELD,
           pickupOtp,
         },
       });
@@ -241,9 +245,7 @@ export class NegotiationService {
         data: { status: ProductStatus.RESERVED },
       });
 
-      if (hasFunds) {
-        await walletService.holdEscrow(offer.buyerId, offer.offeredPrice, order.id, tx);
-      }
+      await walletService.holdEscrow(offer.buyerId, offer.offeredPrice, order.id, tx);
 
       const acceptedOffer = await tx.negotiationOffer.update({
         where: { id: offerId },

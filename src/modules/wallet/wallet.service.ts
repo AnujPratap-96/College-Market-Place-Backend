@@ -171,7 +171,7 @@ export class WalletService {
     if (!user || !user.referredById) return;
 
     // Check if this is their first transaction by counting HOLD entries
-    const wallet = await this.repo.getOrCreateWallet(userId, tx);
+    const wallet = await this.repo.getOrCreateWalletForUpdate(userId, tx);
     const holdCount = await tx.walletLedger.count({
       where: { walletId: wallet.id, type: LedgerType.HOLD }
     });
@@ -179,9 +179,9 @@ export class WalletService {
     // If holdCount is 0, this is their very first HOLD.
     if (holdCount === 0) {
       // Credit to Referrer
-      const referrerWallet = await this.repo.getOrCreateWallet(user.referredById, tx);
-      const referrerNewBalance = referrerWallet.balance + 50.0;
-      await tx.wallet.update({ where: { id: referrerWallet.id }, data: { balance: referrerNewBalance } });
+      const referrerWallet = await this.repo.getOrCreateWalletForUpdate(user.referredById, tx);
+      const referrerNewBalance = addMoney(referrerWallet.balance, 50.0);
+      await this.repo.updateBalances(referrerWallet.id, referrerNewBalance, referrerWallet.escrowBalance, tx);
       await tx.walletLedger.create({
         data: {
           walletId: referrerWallet.id,
@@ -198,8 +198,8 @@ export class WalletService {
       });
 
       // Credit to Referee (New User)
-      const userNewBalance = wallet.balance + 50.0;
-      await tx.wallet.update({ where: { id: wallet.id }, data: { balance: userNewBalance } });
+      const userNewBalance = addMoney(wallet.balance, 50.0);
+      await this.repo.updateBalances(wallet.id, userNewBalance, wallet.escrowBalance, tx);
       await tx.walletLedger.create({
         data: {
           walletId: wallet.id,
@@ -633,18 +633,18 @@ export class WalletService {
     deliveryId: string,
     tx: Prisma.TransactionClient
   ) {
-    const wallet = await this.repo.getOrCreateWallet(subscriberId, tx);
+    const wallet = await this.repo.getOrCreateWalletForUpdate(subscriberId, tx);
 
     const escrowBefore = wallet.escrowBalance;
-    const escrowAfter = Math.max(0, escrowBefore - refundAmount);
+    const escrowAfter = Math.max(0, subtractMoney(escrowBefore, refundAmount));
     const balanceBefore = wallet.balance;
-    const balanceAfter = balanceBefore + refundAmount;
+    const balanceAfter = addMoney(balanceBefore, refundAmount);
 
     await this.repo.updateBalances(wallet.id, balanceAfter, escrowAfter, tx);
     await this.repo.createLedgerEntry(
       {
         walletId: wallet.id,
-        amount: refundAmount,
+        amount: roundMoney(refundAmount),
         type: LedgerType.REFUND,
         balanceBefore,
         balanceAfter,
@@ -667,17 +667,17 @@ export class WalletService {
     subscriptionId: string,
     tx: Prisma.TransactionClient
   ) {
-    const subscriberWallet = await this.repo.getOrCreateWallet(subscriberId, tx);
-    const providerWallet = await this.repo.getOrCreateWallet(providerId, tx);
+    const { senderWallet: subscriberWallet, recipientWallet: providerWallet } =
+      await this.repo.getWalletsForTransfer(subscriberId, providerId, tx);
 
     const subscriberEscrowBefore = subscriberWallet.escrowBalance;
-    const subscriberEscrowAfter = Math.max(0, subscriberEscrowBefore - escrowDeductAmount);
+    const subscriberEscrowAfter = Math.max(0, subtractMoney(subscriberEscrowBefore, escrowDeductAmount));
 
     await this.repo.updateBalances(subscriberWallet.id, subscriberWallet.balance, subscriberEscrowAfter, tx);
     await this.repo.createLedgerEntry(
       {
         walletId: subscriberWallet.id,
-        amount: escrowDeductAmount,
+        amount: roundMoney(escrowDeductAmount),
         type: LedgerType.RELEASE,
         balanceBefore: subscriberWallet.balance,
         balanceAfter: subscriberWallet.balance,
@@ -691,13 +691,13 @@ export class WalletService {
     );
 
     const providerBalanceBefore = providerWallet.balance;
-    const providerBalanceAfter = providerBalanceBefore + providerPayout;
+    const providerBalanceAfter = addMoney(providerBalanceBefore, providerPayout);
 
     await this.repo.updateBalances(providerWallet.id, providerBalanceAfter, providerWallet.escrowBalance, tx);
     await this.repo.createLedgerEntry(
       {
         walletId: providerWallet.id,
-        amount: providerPayout,
+        amount: roundMoney(providerPayout),
         type: LedgerType.CREDIT,
         balanceBefore: providerBalanceBefore,
         balanceAfter: providerBalanceAfter,

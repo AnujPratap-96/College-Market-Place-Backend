@@ -177,7 +177,11 @@ export class AdminService {
       if (action === 'REFUND_BUYER') {
         if (order.paymentMethod === 'WALLET') {
           if (order.orderType === OrderType.RENTAL) {
-            if (order.securityDeposit > 0) {
+            if (!order.rentalStartDate) {
+              // Handover never happened; full totalAmount is still held in escrow
+              await walletService.refundEscrow(order.buyerId, order.totalAmount, order.id, tx);
+            } else if (order.securityDeposit > 0) {
+              // Handover happened; rental fee already released to seller, refund remaining deposit from escrow
               await walletService.refundSecurityDeposit(order.buyerId, order.securityDeposit, order.id, tx);
             }
           } else {
