@@ -1,4 +1,5 @@
 import prisma from '../../lib/prisma';
+import { delCachePattern } from '../../lib/redis';
 
 export const DEFAULT_SETTINGS: Record<string, string> = {
   platform_commission_percent: '0',
@@ -76,6 +77,10 @@ export class SettingsService {
         create: { key, value: String(value) },
       });
     }
+
+    // Invalidate permanent assistant platform knowledge cache so updated fees/rules take effect immediately
+    await delCachePattern('assistant:knowledge:*');
+
     return this.getAllSettings();
   }
 
